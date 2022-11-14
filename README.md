@@ -21,7 +21,7 @@ To make GeneZip available from anywhere in your system, add the GeneZip binary d
 
 ### Installation option 2: installing from source
 
- 1. Clone the repository using `git clone git@github.com:SharonLab/GeneZip.git`.
+ 1. Clone the repository using `git clone https://github.com/SharonLab/GeneZip.git`.
  2. Change directory into the code directory using `cd GeneZip/code`.
  3. Either use pre-installed rust's cargo to build the project with `cargo build --release`, or use the provided build.sh script to install rust+cargo and build the project with `./build.sh`.
  4. The binary file will be located within a directory called target/release and can be executed using `./target/release/GeneZip --help`.
