@@ -1,0 +1,6 @@
+4	../../data/WenC_2017__N315__bin.25
+4	../../data/SRR5106274_bin.22
+4	../../data/LiJ_2017__H2M514901__bin.5
+8	../../data/SRR769516_bin.13
+8	../../data/SRR2992900_bin.58
+8	../../data/ERR011150_bin.10
