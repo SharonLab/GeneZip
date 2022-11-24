@@ -24,9 +24,9 @@ fn run_lz_classifier(usage: &Usage) {
 
     let log_stream =  &mut BufWriter::new(Box::new(std::io::stderr()) as Box<dyn Write>);
 
-    writeln!(log_stream, "GeneZip, {}", usage.get_version()).expect("E: Failed to write log");
+    if usage.get_print_statistics() {
+        writeln!(log_stream, "GeneZip, {}", usage.get_version()).expect("E: Failed to write log");
 
-    {
         let now = Utc::now();
         writeln!(log_stream, "{}\tStarting", now.to_rfc2822()).expect("E: Failed to write log");
     }
@@ -34,7 +34,8 @@ fn run_lz_classifier(usage: &Usage) {
     let len_bases:LenBases = LenBases::new(usage.get_max_depth());
     let mut classifier: Classifier = Classifier::new(&len_bases);
 
-    {
+
+    if usage.get_print_statistics() {
         let now = Utc::now();
         writeln!(log_stream, "{}\tTraining", now.to_rfc2822()).expect("E: Failed to write log");
     }
@@ -47,7 +48,7 @@ fn run_lz_classifier(usage: &Usage) {
         BufReader::new(f)
     };
 
-    {
+    if usage.get_print_statistics() {
         let now = Utc::now();
         writeln!(log_stream, "{}\tPredicting", now.to_rfc2822()).expect("E: Failed to write log");
     }
@@ -63,8 +64,8 @@ fn run_lz_classifier(usage: &Usage) {
         classifier.print_prediction(name, &mut output_stream, &model_name2score).expect("E: Failed to write prediction");
     }
 
-    classifier.print_stats(log_stream).expect("E: failed to write into log");
-    {
+    if usage.get_print_statistics() {
+        classifier.print_stats(log_stream).expect("E: failed to write into log");
         let now = Utc::now();
         writeln!(log_stream, "{}\tDone", now.to_rfc2822()).expect("E: Failed to write log");
     }

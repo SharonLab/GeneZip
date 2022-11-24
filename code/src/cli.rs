@@ -10,6 +10,7 @@ pub struct Usage {
     version: &'static str,
     jobs: Option<usize>,
     buffer_size: usize,
+    print_statistics: bool,
 }
 
 impl Usage {
@@ -60,7 +61,13 @@ impl Usage {
                 .long("jobs")
                 .short('j')
                 .default_value(default_num_threads)
-                .help(jobs_help.as_str()));
+                .help(jobs_help.as_str()))
+            .arg(Arg::with_name("quiet")
+                .long("quiet")
+                .short('q')
+                .help("Quiet run, disable statistics printing")
+                .required(false)
+                .takes_value(false));
 
         let matches = pre_matches.get_matches();
 
@@ -93,6 +100,7 @@ impl Usage {
                 _ => Some(raw_jobs)
             },
             buffer_size: buffer,
+            print_statistics: !matches.is_present("quiet"),
         }
     }
 
@@ -103,4 +111,5 @@ impl Usage {
     pub fn get_version(&self) -> &str { self.version }
     pub fn get_jobs(&self) -> Option<usize> { self.jobs }
     pub fn get_buffer_size(&self) -> usize { self.buffer_size }
+    pub fn get_print_statistics(&self) -> bool { self.print_statistics }
 }
