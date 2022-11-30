@@ -62,10 +62,10 @@ impl Usage {
                 .short('j')
                 .default_value(default_num_threads)
                 .help(jobs_help.as_str()))
-            .arg(Arg::with_name("quiet")
-                .long("quiet")
-                .short('q')
-                .help("Quiet run, disable statistics printing")
+            .arg(Arg::with_name("verbose")
+                .long("verbose")
+                .short('v')
+                .help("Verbose run, enable statistics printing")
                 .required(false)
                 .takes_value(false));
 
@@ -100,7 +100,7 @@ impl Usage {
                 _ => Some(raw_jobs)
             },
             buffer_size: buffer,
-            print_statistics: !matches.is_present("quiet"),
+            print_statistics: matches.is_present("verbose"),
         }
     }
 
