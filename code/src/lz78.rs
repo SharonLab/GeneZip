@@ -296,3 +296,40 @@ impl<'a> std::fmt::Display for LZ78<'a> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use crate::lz78::{LenBases, LZ78};
+
+    #[test]
+    fn paper_example() {
+        let train_path = PathBuf::from("../tests/paper_train.fna");
+        let test_path = PathBuf::from("../tests/paper_test.fna");
+        let max_depth = 13;
+
+        let len_bases = LenBases::new(max_depth);
+        let model = LZ78::new(&"paper", max_depth, &len_bases, train_path.as_path(), 1024);
+        let prediction = model.average_log_score(test_path.as_path());
+        eprintln!("{}", prediction);
+        // - 1 / 3 * log2(1/25)
+        assert!(prediction < 1.547952063258242);
+        assert!(prediction > 1.547952063258240);
+    }
+
+    #[test]
+    fn presentation_example() {
+        let train_path = PathBuf::from("../tests/presentation_train.fna");
+        let test_path = PathBuf::from("../tests/presentation_test.fna");
+        let max_depth = 13;
+
+        let len_bases = LenBases::new(max_depth);
+        let model = LZ78::new(&"paper", max_depth, &len_bases, train_path.as_path(), 1024);
+        let prediction = model.average_log_score(test_path.as_path());
+        eprintln!("{}", prediction);
+        // - 1 / 4 * log2(1/22^2)
+        assert!(prediction < 2.229715809318649);
+        assert!(prediction > 2.229715809318647);
+    }
+}
+
+
