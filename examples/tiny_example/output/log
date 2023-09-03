@@ -1,7 +1,7 @@
-GeneZip, 1.0.0
-Sun, 13 Nov 2022 13:54:49 +0000	Starting
-Sun, 13 Nov 2022 13:54:49 +0000	Training
-Sun, 13 Nov 2022 13:54:49 +0000	Predicting
+GeneZip, 1.0.1
+Thu, 17 Aug 2023 09:51:50 +0000	Starting
+Thu, 17 Aug 2023 09:51:50 +0000	Starting classifier creation
+Thu, 17 Aug 2023 09:51:50 +0000	Training
 
 Number of models: 1
 some stats for each model:
@@ -29,4 +29,9 @@ Depth	NNodes	NFull	% of full
 
 Number of leaves:	454
 
-Sun, 13 Nov 2022 13:54:49 +0000	Done
+                   0	1	1	100.0
+
+Thu, 17 Aug 2023 09:51:50 +0000	GeneZip stats are ready
+Thu, 17 Aug 2023 09:51:50 +0000	Predicting
+Thu, 17 Aug 2023 09:51:50 +0000	GeneZip prediction is ready
+Thu, 17 Aug 2023 09:51:50 +0000	Done

@@ -1,0 +1,5 @@
+18	../data/18c
+20	../data/20c
+24	../data/24c
+4	../data/4c
+8	../data/8c

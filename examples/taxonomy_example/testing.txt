@@ -1,0 +1,6 @@
+Actinomyces_graevenitzii_1	../../data/FerrettiP_2018__CA_C10002MS2015SA_t0M15__bin.17_genes.fna.gz
+Actinomyces_graevenitzii_2	../../data/HMP_2012__SRS018739__bin.61_genes.fna.gz
+Actinomyces_oris_C_1	../../data/CM_periimplantitis__SP_163SPI_T016__bin.19_genes.fna.gz
+Neisseria_flavescens_A_1	../../data/HMP_2012__SRS013879__bin.5_genes.fna.gz
+Neisseria_flavescens_A_2	../../data/HMP_2012__SRS016225__bin.60_genes.fna.gz
+Neisseria_flavescens_A_3	../../data/HMP_2012__SRS015797__bin.49_genes.fna.gz

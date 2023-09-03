@@ -1,99 +1,11 @@
-GeneZip, 1.0.0
-Sun, 13 Nov 2022 14:08:52 +0000	Starting
-Sun, 13 Nov 2022 14:08:52 +0000	Training
-Sun, 13 Nov 2022 14:08:52 +0000	Predicting
+GeneZip, 1.0.1
+Thu, 17 Aug 2023 09:50:32 +0000	Starting
+Thu, 17 Aug 2023 09:50:32 +0000	Starting classifier creation
+Thu, 17 Aug 2023 09:50:32 +0000	Training
 
 Number of models: 5
 some stats for each model:
 
---------------------------------------------------
-Name:                      24
-Node array size:           699051
-Number of inner nodes:     252948
-Max complete depth:        5
-Longest path (root->leaf): 12
-Number of inner node in each depth (% of possible nodes):
-Depth	NNodes	NFull	% of full
-0	1	1	100.0
-1	4	4	100.0
-2	16	16	100.0
-3	64	64	100.0
-4	256	256	100.0
-5	1024	1024	100.0
-6	4062	4096	99.2
-7	15777	16384	96.3
-8	50006	65536	76.3
-9	88879	262144	33.9
-10	69875	1048576	6.7
-11	22984	4194304	0.5
-
-Number of leaves:	758845
---------------------------------------------------
-Name:                      4
-Node array size:           699051
-Number of inner nodes:     272580
-Max complete depth:        4
-Longest path (root->leaf): 12
-Number of inner node in each depth (% of possible nodes):
-Depth	NNodes	NFull	% of full
-0	1	1	100.0
-1	4	4	100.0
-2	16	16	100.0
-3	64	64	100.0
-4	256	256	100.0
-5	1020	1024	99.6
-6	4042	4096	98.7
-7	15604	16384	95.2
-8	48481	65536	74.0
-9	88834	262144	33.9
-10	80999	1048576	7.7
-11	33259	4194304	0.8
-
-Number of leaves:	817741
---------------------------------------------------
-Name:                      20
-Node array size:           699051
-Number of inner nodes:     289669
-Max complete depth:        4
-Longest path (root->leaf): 12
-Number of inner node in each depth (% of possible nodes):
-Depth	NNodes	NFull	% of full
-0	1	1	100.0
-1	4	4	100.0
-2	16	16	100.0
-3	64	64	100.0
-4	256	256	100.0
-5	1023	1024	99.9
-6	4066	4096	99.3
-7	15772	16384	96.3
-8	51174	65536	78.1
-9	96561	262144	36.8
-10	86315	1048576	8.2
-11	34417	4194304	0.8
-
-Number of leaves:	869008
---------------------------------------------------
-Name:                      8
-Node array size:           699051
-Number of inner nodes:     261009
-Max complete depth:        4
-Longest path (root->leaf): 12
-Number of inner node in each depth (% of possible nodes):
-Depth	NNodes	NFull	% of full
-0	1	1	100.0
-1	4	4	100.0
-2	16	16	100.0
-3	64	64	100.0
-4	256	256	100.0
-5	1022	1024	99.8
-6	4062	4096	99.2
-7	15565	16384	95.0
-8	46698	65536	71.3
-9	82164	262144	31.3
-10	76389	1048576	7.3
-11	34768	4194304	0.8
-
-Number of leaves:	783028
 --------------------------------------------------
 Name:                      18
 Node array size:           699051
@@ -117,4 +29,105 @@ Depth	NNodes	NFull	% of full
 
 Number of leaves:	635290
 
-Sun, 13 Nov 2022 14:08:52 +0000	Done
+                   0	1	1	100.0
+--------------------------------------------------
+Name:                      24
+Node array size:           699051
+Number of inner nodes:     252948
+Max complete depth:        5
+Longest path (root->leaf): 12
+Number of inner node in each depth (% of possible nodes):
+Depth	NNodes	NFull	% of full
+0	1	1	100.0
+1	4	4	100.0
+2	16	16	100.0
+3	64	64	100.0
+4	256	256	100.0
+5	1024	1024	100.0
+6	4062	4096	99.2
+7	15777	16384	96.3
+8	50006	65536	76.3
+9	88879	262144	33.9
+10	69875	1048576	6.7
+11	22984	4194304	0.5
+
+Number of leaves:	758845
+
+                   0	1	1	100.0
+--------------------------------------------------
+Name:                      4
+Node array size:           699051
+Number of inner nodes:     272580
+Max complete depth:        4
+Longest path (root->leaf): 12
+Number of inner node in each depth (% of possible nodes):
+Depth	NNodes	NFull	% of full
+0	1	1	100.0
+1	4	4	100.0
+2	16	16	100.0
+3	64	64	100.0
+4	256	256	100.0
+5	1020	1024	99.6
+6	4042	4096	98.7
+7	15604	16384	95.2
+8	48481	65536	74.0
+9	88834	262144	33.9
+10	80999	1048576	7.7
+11	33259	4194304	0.8
+
+Number of leaves:	817741
+
+                   0	1	1	100.0
+--------------------------------------------------
+Name:                      8
+Node array size:           699051
+Number of inner nodes:     261009
+Max complete depth:        4
+Longest path (root->leaf): 12
+Number of inner node in each depth (% of possible nodes):
+Depth	NNodes	NFull	% of full
+0	1	1	100.0
+1	4	4	100.0
+2	16	16	100.0
+3	64	64	100.0
+4	256	256	100.0
+5	1022	1024	99.8
+6	4062	4096	99.2
+7	15565	16384	95.0
+8	46698	65536	71.3
+9	82164	262144	31.3
+10	76389	1048576	7.3
+11	34768	4194304	0.8
+
+Number of leaves:	783028
+
+                   0	1	1	100.0
+--------------------------------------------------
+Name:                      20
+Node array size:           699051
+Number of inner nodes:     289669
+Max complete depth:        4
+Longest path (root->leaf): 12
+Number of inner node in each depth (% of possible nodes):
+Depth	NNodes	NFull	% of full
+0	1	1	100.0
+1	4	4	100.0
+2	16	16	100.0
+3	64	64	100.0
+4	256	256	100.0
+5	1023	1024	99.9
+6	4066	4096	99.3
+7	15772	16384	96.3
+8	51174	65536	78.1
+9	96561	262144	36.8
+10	86315	1048576	8.2
+11	34417	4194304	0.8
+
+Number of leaves:	869008
+
+                   0	1	1	100.0
+
+Thu, 17 Aug 2023 09:50:32 +0000	GeneZip stats are ready
+Thu, 17 Aug 2023 09:50:32 +0000	Predicting
+Thu, 17 Aug 2023 09:50:33 +0000	GeneZip prediction is ready
+Thu, 17 Aug 2023 09:50:33 +0000	Done
