@@ -1,6 +1,6 @@
 [package]
 name = "GeneZip"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
 authors = ["Or Leibovich", "Yochai Meir", "Itai Sharon"]
 readme = "../README.md"
