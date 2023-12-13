@@ -6,13 +6,13 @@ This program builds LZ78 models for DNA sequences from a training set that consi
 
 ### Installation option 1: Using a prebuilt binary
 
-Linux users can download a prebuilt release from [here](https://github.com/SharonLab/GeneZip/releases/download/1.1.0/GeneZip).
+Linux users can download a prebuilt release from [here](https://github.com/SharonLab/GeneZip/releases/download/1.2.0/GeneZip).
 The prebuilt binary was tested on Ubuntu 22.04.
 
 Run the following commands from the directory in which you want GeneZip to be installed:
 
 ```bash
-wget https://github.com/SharonLab/GeneZip/releases/download/1.1.0/GeneZip
+wget https://github.com/SharonLab/GeneZip/releases/download/1.2.0/GeneZip
 chmod u+x GeneZip
 ./GeneZip --help
 ```
