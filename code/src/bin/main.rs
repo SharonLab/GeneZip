@@ -1,7 +1,6 @@
 //  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
 
 
-extern crate core;
 
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -9,231 +8,17 @@ use std::path::Path;
 
 use chrono::Utc;
 
-use crate::cli::{Usage, UserTask};
-use crate::classifier::Classifier;
-use crate::lz78::LenBases;
-use crate::ani_rating::create_fastani_run;
-use crate::kmer_database::KmerDatabase;
-use crate::kmer_prediction::KmerClassifier;
-use crate::print_kmer::print_kmers;
-use crate::samples_file_reader::{Sample, SampleError, SampleSource};
+extern crate GeneZipLib;
 
-mod lz78;
-mod classifier;
-mod cli;
-mod get_gc;
-mod ani_rating;
-mod fasta_nucleutide_iterator;
-mod kmer;
-mod reference_sequence;
-mod taxonomy;
-mod database;
-mod print_kmer;
-mod kmer_database;
-mod kmer_prediction;
-mod samples_file_reader;
-mod fasta_records_iterator;
+use GeneZipLib::cli::{Usage, UserTask};
+use GeneZipLib::ani_rating::create_fastani_run;
+use GeneZipLib::kmer_database::KmerDatabase;
+use GeneZipLib::kmer_prediction::KmerClassifier;
+use GeneZipLib::print_kmer::print_kmers;
+use GeneZipLib::samples_file_reader::{Sample, SampleError, SampleSource};
+use GeneZipLib::database;
+use GeneZipLib::use_classifier::{create_lz_classifier, meta_predict_using_lz_classifier, predict_using_lz_classifier};
 
-
-fn create_lz_classifier(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
-                        max_depth: usize,
-                        name2file: &Path,
-                        buffer_size: usize,
-                        kmer_size: &Option<usize>) -> Classifier {
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tStarting classifier creation", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-    let len_bases: LenBases = LenBases::new(max_depth);
-    let mut classifier: Classifier = Classifier::new(len_bases);
-
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tTraining", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    if let Err(e) = classifier.batch_add_model(name2file, max_depth, buffer_size, kmer_size) {
-        eprintln!("{}", e);
-    }
-
-    if let Some(log_stream) = log_stream {
-        classifier.print_stats(log_stream).expect("E: Failed to write into log");
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tGeneZip stats are ready", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    classifier
-}
-
-
-fn predict_using_lz_classifier(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
-                               buffer_size: usize,
-                               kmer_size: &Option<usize>,
-                               gc_limit: Option<f64>,
-                               classifier: &Classifier,
-                               prediction_name2file: &Path,
-                               output_file: &Path,
-                               reflect: bool) -> Result<(), SampleError> {
-    // Open the output stream
-    let mut output_stream = {
-        let fout = File::create(output_file).unwrap_or_else(|_| panic!("E: Cannot create output file '{}'", output_file.display()));
-        BufWriter::new(fout)
-    };
-
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tPredicting", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    classifier.print_header(&mut output_stream).unwrap_or_else(|_| panic!("E: Failed to write header into output file '{}'", output_file.display()));
-    for sample in samples_file_reader::SampleSource::new(prediction_name2file, false).into_iter() {
-        let sample = sample?;
-        let model_name2score = classifier.predict(sample.get_path(), gc_limit, buffer_size, kmer_size, reflect);
-        classifier.print_prediction(sample.get_name(), &mut output_stream, &model_name2score).unwrap_or_else(|_| panic!("E: Failed to write prediction into '{}", output_file.display()));
-    }
-
-    output_stream.flush().unwrap_or_else(|_| panic!("E: Failed to flush output stream into '{}'", output_file.display()));
-
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tGeneZip prediction is ready", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    Ok(())
-}
-
-fn get_contig_name(full_id: &[u8]) -> &[u8] {
-    let mut parts = full_id.rsplitn(2, |b| *b == b'_');
-    parts.next();
-    parts.next().unwrap_or_else(|| panic!("E: Tried to extract contig name from '{:?}', by splitting right-most underline _, however no two parts were found",
-    full_id))
-}
-
-fn are_genes_of_same_contig(id1: &[u8], id2: &[u8]) -> bool {
-    let id1 = get_contig_name(id1);
-    let id2 = get_contig_name(id2);
-    id1.eq(id2)
-}
-
-fn sequence_id2str(id: &[u8]) -> &str {
-    std::str::from_utf8(id).unwrap_or_else(|_| panic!("E: Sequence id is not a valid string! this should never happen. The id: '{:?}'", id))
-}
-
-fn meta_predict_using_lz_classifier(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
-                               buffer_size: usize,
-                               classifier: &Classifier,
-                               fasta: &Path,
-                               output_file: &Path,
-                               genes: bool,
-                               min_genes: usize) -> Result<(), SampleError> {
-    // Open the output stream
-    let mut output_stream = {
-        let fout = File::create(output_file).unwrap_or_else(|_| panic!("E: Cannot create output file '{}'", output_file.display()));
-        BufWriter::new(fout)
-    };
-
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tPredicting", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    classifier.print_header(&mut output_stream).unwrap_or_else(|_| panic!("E: Failed to write header into output file '{}'", output_file.display()));
-
-    let work_dir = tempdir::TempDir::new("genezip").expect("E: Failed to create temporary directory, quitting");
-    let seq_file_path = work_dir.path().join(Path::new("fasta.fna"));
-    let mut temp_fasta_stream = Some(BufWriter::new(File::create(&seq_file_path).expect("E: Failed to create temporary fasta file")));
-    let mut prev_record_id = None;
-    let mut found_genes = 0_usize;
-    for record_part in fasta_records_iterator::FastaRecordIterator::new(fasta, buffer_size) {
-        match record_part {
-            fasta_records_iterator::FastaPartType::ID(id) => {
-                match prev_record_id.as_ref() {
-                    None => {
-                        let contig = sequence_id2str(id.as_slice());
-                        writeln!(temp_fasta_stream.as_mut().expect("E: Temporary fasta creation failed"), ">{}", contig).expect("E: Failed to write sequence id into temporary fasta file");
-                        prev_record_id = Some(id);
-                        found_genes += 1;
-                    },
-                    Some(prev_id) => {
-                        let replace = if genes {
-                            if are_genes_of_same_contig(prev_id, &id) {
-                                // We write it here to avoid duplicating "id" as the compiler fails to prove it will not be moved to a "else" block.
-                                writeln!(temp_fasta_stream.as_mut().expect("E: Temporary fasta creation failed"), "\n>{}", sequence_id2str(id.as_slice())).expect("E: Failed to write sequence id into temporary fasta file");
-                                found_genes += 1;
-                                None // We continue with this gene
-                            } else {
-                                Some(id)
-                            }
-                        } else {
-                            Some(id)
-                        };
-                        if let Some(replace) = replace {
-                            if let Some(mut temp_fasta_stream) = temp_fasta_stream.take() {
-                                temp_fasta_stream.flush().expect("E: Failed to flush temporary fasta file");
-                                drop(temp_fasta_stream);
-
-                                if !genes || min_genes == 0 || found_genes >= min_genes {
-                                    let contig = sequence_id2str(if genes {
-                                        get_contig_name(prev_id.as_slice())
-                                    } else {
-                                        prev_id.as_slice()
-                                    });
-                                    let model_name2score = classifier.predict(&seq_file_path, None, buffer_size, &None, false);
-                                    classifier.print_prediction(contig,
-                                                                &mut output_stream, &model_name2score).unwrap_or_else(|_| panic!("E: Failed to write prediction into '{}", output_file.display()));
-                                }
-                            }
-
-                            temp_fasta_stream = Some(BufWriter::new(File::create(&seq_file_path).expect("E: Failed to create temporary fasta file")));
-                            {
-                                found_genes = 1;
-                                let contig = sequence_id2str(replace.as_slice());
-                                writeln!(temp_fasta_stream.as_mut().expect("E: Temporary fasta creation failed"), ">{}", contig).expect("E: Failed to write sequence id into temporary fasta file");
-                            }
-
-                            let _ = prev_record_id.insert(replace);
-                        }
-                    }
-                }
-            },
-            fasta_records_iterator::FastaPartType::Nuc(nuc) => {
-                match temp_fasta_stream.as_mut() {
-                    Some(temp_fasta_stream) => write!(temp_fasta_stream, "{}", nuc as char).expect("E: Failed to write into temporary file"),
-                    None => panic!("E: The fasta file '{}' is malformed! a non-description line shows up before description line", fasta.display()),
-                }
-            }
-        }
-    }
-
-    if let Some(prev_id) = prev_record_id {
-        if let Some(mut temp_fasta_stream) = temp_fasta_stream.take() {
-            temp_fasta_stream.flush().expect("E: Failed to flush temporary fasta file");
-            drop(temp_fasta_stream);
-
-            if !genes || min_genes == 0 || found_genes >= min_genes {
-                let model_name2score = classifier.predict(&seq_file_path, None, buffer_size, &None, false);
-                let contig = sequence_id2str(if genes {
-                    get_contig_name(prev_id.as_slice())
-                } else {
-                    prev_id.as_slice()
-                });
-                classifier.print_prediction(contig,
-                                            &mut output_stream, &model_name2score).unwrap_or_else(|_| panic!("E: Failed to write prediction into '{}", output_file.display()));
-            }
-        }
-    }
-
-    drop(work_dir);
-
-    output_stream.flush().unwrap_or_else(|_| panic!("E: Failed to flush output stream into '{}'", output_file.display()));
-
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tGeneZip prediction is ready", now.to_rfc2822()).expect("E: Failed to write log");
-    }
-
-    Ok(())
-}
 
 
 fn run_ani<I>(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
@@ -428,7 +213,8 @@ fn compute_task(usage: &Usage) {
                                   usage.get_out_file().expect("E: Trying to get the output file, but no path was provided by user. This should never happen."),
                                   usage.get_kmer_size().expect("E: Trying to get k chosen by the user, however, no such parameter was taken. This should never happen."),
                                   usage.get_ratio(),
-                                  usage.get_buffer_size()) {
+                                  usage.get_buffer_size(),
+                                  usage.get_meta()) {
                     Ok(()) => (),
                     Err(e) => eprintln!("E: Failed to print kmers, got the following error: {:?}", e),
                 }
@@ -505,79 +291,4 @@ fn main() {
     }
 
     compute_task(&usage)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::BufRead;
-    use std::path::PathBuf;
-    use crate::{are_genes_of_same_contig, create_lz_classifier, get_contig_name, meta_predict_using_lz_classifier, predict_using_lz_classifier};
-
-    #[test]
-    fn test_get_contig_name() {
-        let full_name = "test_0_1".as_bytes();
-        assert_eq!(get_contig_name(full_name), "test_0".as_bytes());
-    }
-
-    #[test]
-    fn test_are_genes_of_same_contig() {
-        let id_1 = "test_0_1".as_bytes();
-        let id_2 = "test_0_2".as_bytes();
-        let id_3 = "test_1_2".as_bytes();
-        assert!(are_genes_of_same_contig(id_1, id_2));
-        assert!(!are_genes_of_same_contig(id_1, id_3));
-    }
-
-    #[test]
-    fn test_meta_genes() {
-        let output_path = PathBuf::from("../tests/meta_small_sample_predication.tsv");
-        // max_depth is 12, for consistency with the small sample.
-        let classifier = create_lz_classifier(None, 12, &PathBuf::from("../tests/small_example_training.txt"), 512, &None);
-        meta_predict_using_lz_classifier(None,
-                                         512,
-                                         &classifier,
-                                         &PathBuf::from("../data/small_sample_as_meta.fna"),
-                                         &output_path,
-                                         true,
-        0).unwrap();
-        let lines = ["Genome_name\t18\t20\t24\t4\t8\tBest_hit",
-                             "4_1\t1.98068\t1.97345\t1.98103\t1.96102\t1.99144\t4",
-                             "4_2\t1.97270\t1.96790\t1.97642\t1.95492\t1.98538\t4",
-                             "4_3\t1.96976\t1.96571\t1.97475\t1.95316\t1.98320\t4",
-                             "8_1\t1.95204\t1.97514\t1.97050\t1.96392\t1.93566\t8",
-                             "8_2\t1.95018\t1.97452\t1.97047\t1.96315\t1.93396\t8",
-                             "8_3\t1.95041\t1.97463\t1.96904\t1.96244\t1.93397\t8"];
-        for (cl, kl) in std::fs::read(&output_path).unwrap().lines().zip(lines) {
-            assert_eq!(cl.unwrap(), kl);
-        }
-
-        std::fs::remove_file(&output_path).unwrap();
-    }
-
-    #[test]
-    fn test_small_example() {
-        let output_path = PathBuf::from("../tests/small_sample_predication.tsv");
-        // max_depth is 12, for consistency with the small sample.
-        let classifier = create_lz_classifier(None, 12, &PathBuf::from("../tests/small_example_training.txt"), 512, &None);
-        predict_using_lz_classifier(None,
-                                    512,
-                                    &None,
-                                    None,
-                                    &classifier,
-                                    &PathBuf::from("../tests/small_example_testing.txt"),
-                                    &output_path,
-                                    false).unwrap();
-        let lines = ["Genome_name\t18\t20\t24\t4\t8\tBest_hit",
-            "4\t1.98068\t1.97345\t1.98103\t1.96102\t1.99144\t4",
-            "4\t1.97270\t1.96790\t1.97642\t1.95492\t1.98538\t4",
-            "4\t1.96976\t1.96571\t1.97475\t1.95316\t1.98320\t4",
-            "8\t1.95204\t1.97514\t1.97050\t1.96392\t1.93566\t8",
-            "8\t1.95018\t1.97452\t1.97047\t1.96315\t1.93396\t8",
-            "8\t1.95041\t1.97463\t1.96904\t1.96244\t1.93397\t8"];
-        for (cl, kl) in std::fs::read(&output_path).unwrap().lines().zip(lines) {
-            assert_eq!(cl.unwrap(), kl);
-        }
-
-        std::fs::remove_file(&output_path).unwrap();
-    }
 }

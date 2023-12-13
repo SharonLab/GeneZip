@@ -4,8 +4,6 @@
 //  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 11/Sep/22
 //
 
-use std::path::Path;
-use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -52,7 +50,6 @@ pub struct LZ78 {
     full_depth: usize, // Maximum depth in which all inner nodes are present
     num_nodes_in_depth: Vec<usize>, // Keeps the number of inner nodes in each depth
     len_bases: LenBases,
-    buffer_size: usize,
 }
 
 impl LZ78 {
@@ -60,7 +57,8 @@ impl LZ78 {
         (self.mem[idx >> 3] & (128_u8 >> (idx as u8 & 7))) > 0
     }
 
-    pub fn new(max_depth: usize, len_bases: LenBases, file_path: &Path, buffer_size: usize) -> Self {
+    pub fn new<I>(max_depth: usize, len_bases: LenBases, sequence_stream: I) -> Self
+    where I: IntoIterator<Item=u8> + Clone {
         let mem_size = calc_mem_size(&len_bases, max_depth);
 
         let mut lz = LZ78 {
@@ -71,10 +69,9 @@ impl LZ78 {
             full_depth: 0,
             num_nodes_in_depth: vec![0; max_depth+1],
             len_bases,
-            buffer_size,
         };
         lz.num_nodes_in_depth[0] = 1;
-        lz.build(file_path);
+        lz.build(sequence_stream);
         lz
     }
 
@@ -82,11 +79,12 @@ impl LZ78 {
     // For a sequence s=s1s2...sn, the index in the bit memory can be calculated
     // using m(s1..si) = (4^0+..+4^(i-1))-1 + 4*m(s1..si-1)
     // There is some bug here
-    fn build(&mut self, file_path: &Path) {
+    fn build<I>(&mut self, sequence: I)
+    where I: IntoIterator<Item=u8> {
         let mut curr_depth = 1; // len is at least 1
         let mut curr_sequence: usize = 0_usize;  // sequence value.
 
-        for p in FastaNucltudiesIterator::new(file_path, self.buffer_size) {
+        for p in sequence {
             if p == b'N' {
                 curr_depth = 1;
                 curr_sequence = 0;
@@ -142,8 +140,9 @@ impl LZ78 {
         self.leaf_count += 3;
     }
 
-    pub fn average_log_score(&self, file_path: &Path) -> f64 {
-        // self.average_log_score_helper(&mut FastaNucltudiesIterator::new(file_path))
+    pub fn average_log_score<I>(&self, sequence: I) -> f64
+    where I: IntoIterator<Item=u8> {
+
         let mut nchars= 0;
         let mut actual_nchars: usize = 0;
         let mut leaf_count: usize = 0;
@@ -151,7 +150,7 @@ impl LZ78 {
         let mut curr_depth: usize = 1;
         let mut curr_sequence: usize = 0;
 
-        for p in FastaNucltudiesIterator::new(file_path, self.buffer_size) {
+        for p in sequence {
             if p == b'N' {
                 curr_depth = 1;
                 curr_sequence = 0;
@@ -238,6 +237,7 @@ impl std::fmt::Display for LZ78 {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
     use crate::lz78::{LenBases, LZ78};
 
     #[test]
@@ -247,8 +247,8 @@ mod tests {
         let max_depth = 13;
 
         let len_bases = LenBases::new(max_depth);
-        let model = LZ78::new( max_depth, len_bases, train_path.as_path(), 1024);
-        let prediction = model.average_log_score(test_path.as_path());
+        let model = LZ78::new( max_depth, len_bases, FastaNucltudiesIterator::new(train_path.as_path(), 1024));
+        let prediction = model.average_log_score(FastaNucltudiesIterator::new(test_path.as_path(), 1024));
         eprintln!("{}", prediction);
         // - 1 / 3 * log2(1/25)
         assert!(prediction < 1.547952063258242);
@@ -262,8 +262,8 @@ mod tests {
         let max_depth = 13;
 
         let len_bases = LenBases::new(max_depth);
-        let model = LZ78::new(max_depth, len_bases, train_path.as_path(), 1024);
-        let prediction = model.average_log_score(test_path.as_path());
+        let model = LZ78::new(max_depth, len_bases, FastaNucltudiesIterator::new(train_path.as_path(), 1024));
+        let prediction = model.average_log_score(FastaNucltudiesIterator::new(test_path.as_path(), 1024));
         eprintln!("{}", prediction);
         // - 1 / 4 * log2(1/22^2)
         assert!(prediction < 2.229715809318649);
@@ -277,8 +277,8 @@ mod tests {
         let max_depth = 13;
 
         let len_bases = LenBases::new(max_depth);
-        let model = LZ78::new(max_depth, len_bases, train_path.as_path(), 1024);
-        let prediction = model.average_log_score(test_path.as_path());
+        let model = LZ78::new(max_depth, len_bases, FastaNucltudiesIterator::new(train_path.as_path(), 1024));
+        let prediction = model.average_log_score(FastaNucltudiesIterator::new(test_path.as_path(), 1024));
         eprintln!("{}", prediction);
         // - 1 / 5 * log2(1/22^3)
         assert_eq!(prediction, 2.6756589711823784);
@@ -291,8 +291,8 @@ mod tests {
         let max_depth = 13;
 
         let len_bases = LenBases::new(max_depth);
-        let model = LZ78::new(max_depth, len_bases, train_path.as_path(), 1024);
-        let prediction = model.average_log_score(test_path.as_path());
+        let model = LZ78::new(max_depth, len_bases, FastaNucltudiesIterator::new(train_path.as_path(), 1024));
+        let prediction = model.average_log_score(FastaNucltudiesIterator::new(test_path.as_path(), 1024));
         eprintln!("{}", prediction);
         // - 1 / 8 * log2(1/22^4)
         assert!(prediction < 2.229715809318649);

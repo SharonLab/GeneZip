@@ -5,6 +5,7 @@ use crate::lz78::{LenBases, LZ78};
 use crate::taxonomy::Taxonomy;
 
 use serde::{Serialize, Deserialize};
+use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
 
 #[derive(Serialize, Deserialize)]
 pub struct ReferenceSequence {
@@ -20,12 +21,12 @@ pub struct ReferenceSequence {
 
 impl ReferenceSequence {
     pub fn new(fasta_path: &Path, name: &str, kmer_size: &Option<usize>, buffer_size: usize, lz_lenbases: LenBases, lzmax_depth: usize, kmer_cluster: &Option<Taxonomy>) -> Self {
-        let prediction_model = LZ78::new(lzmax_depth, lz_lenbases, fasta_path, buffer_size);
-        let self_value = prediction_model.average_log_score(fasta_path);
+        let prediction_model = LZ78::new(lzmax_depth, lz_lenbases, FastaNucltudiesIterator::new(fasta_path, buffer_size));
+        let self_value = prediction_model.average_log_score(FastaNucltudiesIterator::new(fasta_path, buffer_size));
         ReferenceSequence {
             prediction_model,
-            gc: calc_gc(fasta_path, buffer_size),
-            kmer: kmer_size.map(|k| create_normalized_profile(k, fasta_path, buffer_size).1.unwrap_or_else(|_| panic!("ERROR: failed to create kmer for {}, quitting", fasta_path.display()))),
+            gc: calc_gc(FastaNucltudiesIterator::new(fasta_path, buffer_size)),
+            kmer: kmer_size.map(|k| create_normalized_profile(k, FastaNucltudiesIterator::new(fasta_path, buffer_size), &false).1.unwrap_or_else(|_| panic!("ERROR: failed to create kmer for {}, quitting", fasta_path.display()))),
             name: name.to_string(),
             kmer_cluster: kmer_cluster.clone(),
             self_value,

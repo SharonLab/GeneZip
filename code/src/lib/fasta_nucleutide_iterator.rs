@@ -1,6 +1,7 @@
 //  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
 
 use std::ffi::OsStr;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
@@ -8,10 +9,16 @@ use flate2::bufread::MultiGzDecoder;
 
 pub struct FastaNucltudiesIterator {
     path: PathBuf,
-    stream: Box<dyn BufRead>,
+    stream: Box<dyn BufRead + Sync>,
     buffer: Vec<u8>,
     buffer_index: usize,
     buffer_filled: usize,
+}
+
+impl Clone for FastaNucltudiesIterator {
+    fn clone(&self) -> Self {
+        Self::new(&self.path, self.buffer.len())
+    }
 }
 
 impl FastaNucltudiesIterator {
@@ -25,7 +32,7 @@ impl FastaNucltudiesIterator {
         }
     }
 
-    fn open_fasta(fasta: &Path) -> Box<dyn BufRead> {
+    fn open_fasta(fasta: &Path) -> Box<dyn BufRead + Sync> {
         let f = BufReader::new(match File::open(fasta) {
             Err(e) => panic!("E: Can not open fasta file at '{}', got '{}'", fasta.display(), e),
             Ok(f) => f,
@@ -101,5 +108,11 @@ impl Iterator for FastaNucltudiesIterator {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.next_nuc()
+    }
+}
+
+impl Display for FastaNucltudiesIterator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.path.display())
     }
 }

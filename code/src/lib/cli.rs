@@ -143,6 +143,10 @@ enum Commands {
         /// Ratio, if given, will print value between 0 and 1, else, will print values from 0 to 100.
         #[arg(short = 'r', long = "ratio", value_name = "ratio", default_value_t = false)]
         ratio: bool,
+
+        /// Meta, if given, will calculate k-mer frequencies separately for each sequence, assuming the input file to be a fasta file.
+        #[arg(short = 'm', long = "meta", value_name = "meta", default_value_t = false)]
+        meta: bool,
     },
     /// Create k-mer database of reference sequences for later GeneZip prediction call
     #[command(hide = true)]
@@ -309,15 +313,17 @@ struct PrintKmerSettings {
     output: PathBuf,
     k: usize,
     ratio: bool,
+    meta: bool,
 }
 
 impl PrintKmerSettings {
-    fn new(input: &Path, output: &Path, k: usize, ratio: bool) -> Self {
+    fn new(input: &Path, output: &Path, k: usize, ratio: bool, meta: bool) -> Self {
         PrintKmerSettings {
             input: input.to_path_buf(),
             output: output.to_path_buf(),
             k,
             ratio,
+            meta,
         }
     }
 }
@@ -365,8 +371,8 @@ impl From<Commands> for Task {
                 Task::Predict(FeatureSettings::new(&training_name2file_file, max_depth, Some(kmer_size)),
                               PredictionSettings::new(&prediction_name2file_file, &out_file, &ani_out_file, gc_limit, reflect))
             },
-            Commands::PrintKmer {input, output, k, ratio} => {
-                Task::PrintKmer(PrintKmerSettings::new(&input, &output, k, ratio))
+            Commands::PrintKmer {input, output, k, ratio, meta} => {
+                Task::PrintKmer(PrintKmerSettings::new(&input, &output, k, ratio, meta))
             },
             Commands::BuildKmers {training_name2file_file, kmer_size, db} => {
                 Task::BuildKmer(BuildKmerDBSettings::new(&db, &training_name2file_file, kmer_size))
@@ -410,6 +416,12 @@ impl From<&Task> for UserTask {
 pub struct Usage {
     run_settings: RunSettings,
     task: Task,
+}
+
+impl Default for Usage {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Usage {
@@ -548,6 +560,13 @@ impl Usage {
         match &self.task {
             Task::MetaPredict(_, s) => s.min_genes,
             _ => 0,
+        }
+    }
+
+    pub fn get_meta(&self) -> bool {
+        match &self.task {
+            Task::PrintKmer(s) => s.meta,
+            _ => false,
         }
     }
 }

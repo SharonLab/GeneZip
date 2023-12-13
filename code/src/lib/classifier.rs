@@ -4,6 +4,7 @@ use std::io::{BufWriter, Write};
 use std::path::{Path};
 use std::string::String;
 use std::collections::HashSet;
+use std::fmt::Display;
 
 use rayon::prelude::*;
 use hashbrown::{HashMap};
@@ -97,8 +98,9 @@ impl Classifier {
     }
 
 
-    fn filter_models_by_gc<'a>(&self, file_path: &Path, gc_limit: f64, buffer_size: usize, models_to_check: &HashSet<&'a String>) -> HashSet<&'a String> {
-        let genome_gc = calc_gc(file_path, buffer_size);
+    fn filter_models_by_gc<'a, I>(&self, sequence: I, gc_limit: f64, models_to_check: &HashSet<&'a String>) -> HashSet<&'a String>
+    where I: IntoIterator<Item=u8> {
+        let genome_gc = calc_gc(sequence);
 
         models_to_check.into_par_iter()
             .filter_map(|&model_name| {
@@ -111,7 +113,8 @@ impl Classifier {
             .collect::<HashSet<_>>()
     }
 
-    fn get_model_kmer_correlation(&self, model_name: &String, genome_kmer: &Array1<f64>, file_path: &Path) -> (&Taxonomy, f64) {
+    fn get_model_kmer_correlation<I>(&self, model_name: &String, genome_kmer: &Array1<f64>, sequence_stream: I) -> (&Taxonomy, f64)
+    where I: Display {
         let model_kmer_vector = match self.models.get(model_name) {
             None => panic!("E: Tried to access non-existing model by its name, this should never happen, quitting"),
             Some(reference_sequence) => match reference_sequence.get_kmer() {
@@ -121,28 +124,29 @@ impl Classifier {
         };
 
         if model_kmer_vector.len() != genome_kmer.len() {
-            panic!("E: Model {} and genome {} have different k for k-mer filtration, quitting", model_name, file_path.display());
+            panic!("E: Model {} and genome {} have different k for k-mer filtration, quitting", model_name, sequence_stream);
         }
 
         // let merged_array = arr2(&vec![genome_kmer, model_kmer_vector]);
         let merged_array = stack!(ndarray::Axis(0), genome_kmer.clone(), model_kmer_vector.clone());
         let correlation = match merged_array.pearson_correlation() {
             Ok(c) => c.mean().unwrap(),  // TODO: make sure this is indead the coefficient
-            Err(e) => panic!("E: tried to calculate the correlation between genome {} and model {}, got {:?}, quitting", file_path.display(), model_name, e),
+            Err(e) => panic!("E: tried to calculate the correlation between genome {} and model {}, got {:?}, quitting", sequence_stream, model_name, e),
         };
 
         (self.models[model_name].get_kmer_cluster().unwrap_or_else(|| panic!("E: tried to filter by kmer but model {} has no kmer cluster, quitting", model_name)),
          correlation)
     }
 
-    fn filter_models_by_kmer<'b>(&self, file_path: &Path, kmer_cluster_limit: usize, buffer_size: usize, models_to_check: &HashSet<&'b String>) -> HashSet<&'b String> {
-        let genome_kmer = match create_normalized_profile(kmer_cluster_limit, file_path, buffer_size).1 {
+    fn filter_models_by_kmer<'b, I>(&self, sequence_stream: I, kmer_cluster_limit: usize, models_to_check: &HashSet<&'b String>) -> HashSet<&'b String>
+        where I: IntoIterator<Item=u8> + Display + Clone + Sync {
+        let genome_kmer = match create_normalized_profile(kmer_cluster_limit, sequence_stream.clone(), &1_usize).1 {
             Ok(vector) => vector,
-            Err(e) => panic!("E: tried to create k({})-mer for genome {}, but got {:?}, quitting", kmer_cluster_limit, file_path.display(), e),
+            Err(e) => panic!("E: tried to create k({})-mer for genome {}, but got {:?}, quitting", kmer_cluster_limit, sequence_stream, e),
         };
 
         let best_kmer_cluster = models_to_check.into_par_iter()
-            .map(|&model_name | self.get_model_kmer_correlation(model_name, &genome_kmer, file_path))
+            .map(|&model_name | self.get_model_kmer_correlation(model_name, &genome_kmer, sequence_stream.clone()))
             .max_by(|pair_a, pair_b| pair_a.1.total_cmp(&pair_b.1) ).unwrap().0;
 
         models_to_check.iter()
@@ -152,20 +156,21 @@ impl Classifier {
     }
 
 
-    pub fn predict(&self, file_path: &Path, gc_limit: Option<f64>, buffer_size: usize, kmer_cluster_limit: &Option<usize>, reflect: bool) -> Vec<(&String, Option<f64>)> {
+    pub fn predict<I>(&self, sequence: I, gc_limit: Option<f64>, kmer_cluster_limit: &Option<usize>, reflect: bool) -> Vec<(&String, Option<f64>)>
+    where I: IntoIterator<Item=u8> + Clone + Display + Sync {
         let models_to_check = match gc_limit {
             None => HashSet::from_iter(self.models_order.iter()),
-            Some(gc_limit) => self.filter_models_by_gc(file_path, gc_limit, buffer_size, &HashSet::from_iter(&self.models_order)),
+            Some(gc_limit) => self.filter_models_by_gc(sequence.clone(), gc_limit, &HashSet::from_iter(&self.models_order)),
         };
 
         let models_to_check = match kmer_cluster_limit {
             None => models_to_check,
-            Some(kmer_limit) => self.filter_models_by_kmer(file_path, *kmer_limit, buffer_size, &models_to_check),
+            Some(kmer_limit) => self.filter_models_by_kmer(sequence.clone(), *kmer_limit, &models_to_check),
         };
 
         let self_reflection = if reflect {
-            let model = LZ78::new(self.len_bases.get_max_depth(), self.len_bases.clone(), file_path, buffer_size);
-            let self_value = model.average_log_score(file_path);
+            let model = LZ78::new(self.len_bases.get_max_depth(), self.len_bases.clone(), sequence.clone());
+            let self_value = model.average_log_score(sequence.clone());
             Some((model, self_value))
         } else { None };
 
@@ -173,9 +178,10 @@ impl Classifier {
             .par_bridge()
             .map(|&model_name| {
                 let model = self.models.get(model_name).unwrap();
-                let gz_model_genome = model.get_prediction_model().average_log_score(file_path);
+                let gz_model_genome = model.get_prediction_model().average_log_score(sequence.clone());
                 if let Some((self_model, self_value)) = &self_reflection {
-                    (model_name, Some( (gz_model_genome + self_model.average_log_score(model.get_fasta_path()) ) / ( self_value + model.get_self_value() )  ))
+                    // FastaNucltudiesIterator::new(model.get_fasta_path(), buffer_size)
+                    (model_name, Some( (gz_model_genome + self_model.average_log_score(sequence.clone()) ) / ( self_value + model.get_self_value() )  ))
                 } else {
                     (model_name, Some(gz_model_genome))
                 }

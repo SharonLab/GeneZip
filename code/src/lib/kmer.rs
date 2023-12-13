@@ -54,10 +54,8 @@ lazy_static! {
 ///
 /// # Example
 ///
-/// ```rust
-/// let results = create_bit_mask(2);
+/// let results = create_bits_mask(2);
 /// assert_eq!(0b1111, results);
-/// ```
 fn create_bits_mask(k: usize) -> usize {
     let mut mask = 0;
     for _ in 0..k {
@@ -76,12 +74,10 @@ fn create_bits_mask(k: usize) -> usize {
 ///
 /// # Example
 ///
-///```rust
 /// let reverse = complement_index(0b1000, 2);
 /// assert_eq!(reverse, 0b1101);
 /// let reverse = complement_index(0b0110, 2);
 /// assert_eq!(reverse, 0b0110);
-/// ```
 fn complement_index(word: usize, k: usize) -> usize {
     let mask: usize = KMASK[&k];
     let nucleotide_mask: usize = KMASK[&1]; // one nucleotide
@@ -119,14 +115,15 @@ pub fn create_printed_vector(k: usize, alphabet_values: &HashMap<u8, u8>, rev_al
 
 
 /// Helper function to get_fasta_vector, allow abstraction of BufRead to open text file, gz file etc...
-fn get_fasta_vector(k: usize, fasta: &Path, alphabet_map: &HashMap<u8, u8>, alphabet_values: &HashMap<u8, usize>, buffer_size: usize) -> Result<ndarray::Array1<f64>, String> {
+fn get_fasta_vector<I>(k: usize, fasta: I, alphabet_map: &HashMap<u8, u8>, alphabet_values: &HashMap<u8, usize>) -> Result<Array1<f64>, String>
+    where I: IntoIterator<Item=u8> {
     let mut vector = Array::zeros(alphabet_values.len().pow(k as u32));
     let mask = KMASK[&k];
     let mut index: usize = 0; // left to right word index
     let mut findex: usize = 0; // flipped word index
     let mut found = 0; // how many nucleotides read so far, we own't start counting before k
 
-    for nucleotide in FastaNucltudiesIterator::new(fasta, buffer_size) {
+    for nucleotide in fasta {
         if alphabet_map.keys().any(|x| *x == nucleotide) {
             // Handle first vector
             index = (index << 2) | (alphabet_values[&nucleotide]);
@@ -162,7 +159,7 @@ fn get_fasta_vector(k: usize, fasta: &Path, alphabet_map: &HashMap<u8, u8>, alph
 /// * `vector` - A vector to minimize
 /// * `k` - How long should each kmer should be be.
 ///
-fn minimize_vector(vector: &mut ndarray::Array1<f64>, k: usize) -> ndarray::Array1<f64> {
+fn minimize_vector(vector: &mut Array1<f64>, k: usize) -> Array1<f64> {
     let mut new_vector_size = 0;
     for i in 0..vector.shape()[0] {
         if vector[i] >= 0.0 {
@@ -190,7 +187,7 @@ fn minimize_vector(vector: &mut ndarray::Array1<f64>, k: usize) -> ndarray::Arra
 }
 
 /// Normalizes the vector values
-fn normalize_vector(vector: &mut ndarray::Array1<f64>) -> &mut  ndarray::Array1<f64> {
+fn normalize_vector(vector: &mut Array1<f64>) -> &mut Array1<f64> {
     let total_kmer_values = vector.sum();
     *vector /= total_kmer_values;
     vector
@@ -204,17 +201,18 @@ fn normalize_vector(vector: &mut ndarray::Array1<f64>) -> &mut  ndarray::Array1<
 /// * `k` - length of kmer.
 /// * `fasta_path` - Path to a fasta file.
 ///
-pub fn create_normalized_profile(k: usize, fasta_path: &Path, buffer_size: usize) -> (&Path, Result<ndarray::Array1<f64>, String>) {
+pub fn create_normalized_profile<I, N: ?Sized>(k: usize, fasta: I, id: &N) -> (&N, Result<Array1<f64>, String>)
+    where I: IntoIterator<Item=u8> + Clone + Sync {
     if k > usize::MAX / 2 {  // We use 2 bits per nucleotide
         panic!("K-mer value is too high, value must be <= {} on your system", usize::MAX / 2);
     }
 
-    let mut vector = match &mut get_fasta_vector(k, fasta_path, &ALPHABET_MAP, &ALPHABET_VALUES, buffer_size) {
+    let mut vector = match &mut get_fasta_vector(k, fasta, &ALPHABET_MAP, &ALPHABET_VALUES) {
         Ok(v) => minimize_vector(v, k),
-        Err(e) => return (fasta_path, Err(e.to_string())),
+        Err(e) => return (id, Err(e.to_string())),
     };
     normalize_vector(&mut vector);
-    (fasta_path, Ok(vector))
+    (id, Ok(vector))
 }
 
 /// Translates the given genomes into k genomic-profile HashMap using up-to ncores but not less then 1.
@@ -226,13 +224,13 @@ pub fn create_normalized_profile(k: usize, fasta_path: &Path, buffer_size: usize
 /// * `genomes` - which genomes to take
 /// * `k` - the k in kmer
 #[allow(dead_code)]
-pub fn generate_kmers<'a>(genomes: &Vec<&'a Path>, k: usize, use_multithreading: bool, buffer_size: usize) -> HashMap<&'a Path, Result<ndarray::Array1<f64>, String>> {
+pub fn generate_kmers<'a>(genomes: &Vec<&'a Path>, k: usize, use_multithreading: bool, buffer_size: usize) -> HashMap<&'a Path, Result<Array1<f64>, String>> {
     let mut result = HashMap::new();
     if use_multithreading {
-        result.par_extend(genomes.into_par_iter().map(|genome| create_normalized_profile(k, genome, buffer_size)));
+        result.par_extend(genomes.into_par_iter().map(|&genome| create_normalized_profile(k, FastaNucltudiesIterator::new(genome, buffer_size), genome)));
     } else {
         for genome in genomes {
-            let (_, normalized_profile) = create_normalized_profile(k, genome, buffer_size);
+            let (_, normalized_profile) = create_normalized_profile(k, FastaNucltudiesIterator::new(genome, buffer_size), genome);
             result.insert(*genome, normalized_profile);
         }
     }
@@ -243,12 +241,13 @@ pub fn generate_kmers<'a>(genomes: &Vec<&'a Path>, k: usize, use_multithreading:
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+    use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
     use crate::kmer::{ALPHABET_MAP, ALPHABET_VALUES, complement_index, create_normalized_profile, create_printed_vector, get_fasta_vector, minimize_vector, REV_ALPHABET_VALUES};
 
     #[test]
     fn one_mer() {
         let dna_test_path = PathBuf::from("../tests/gc_tests.fna");
-        let vector = create_normalized_profile(1, dna_test_path.as_path(), 510).1.unwrap();
+        let vector = create_normalized_profile(1, FastaNucltudiesIterator::new(dna_test_path.as_path(), 510), &false).1.unwrap();
         assert_eq!(vector[0], 0.6976744186046512);
         assert_eq!(vector[1], 1.0 - 0.6976744186046512);
         assert_eq!(create_printed_vector(1, &ALPHABET_MAP, &REV_ALPHABET_VALUES), vec!["A", "C"])
@@ -258,7 +257,7 @@ mod tests {
     fn two_mer() {
         let dna_test_path = PathBuf::from("../tests/gc_tests.fna");
 
-        let vector = create_normalized_profile(2, dna_test_path.as_path(), 512).1.unwrap();
+        let vector = create_normalized_profile(2, FastaNucltudiesIterator::new(dna_test_path.as_path(), 512), &false).1.unwrap();
         for (i, v) in [0.2682926829268293, 0.04878048780487805, 0.07317073170731707, 0.17073170731707318, 0.14634146341463414, 0.04878048780487805, 0.024390243902439025, 0.024390243902439025, 0.07317073170731707, 0.12195121951219512].iter().enumerate() {
             assert_eq!(vector[i], v.clone());
         }
@@ -268,7 +267,7 @@ mod tests {
             assert_eq!(labels[i], *c);
         }
 
-        let counts = minimize_vector(&mut get_fasta_vector(2, &dna_test_path, &ALPHABET_MAP, &ALPHABET_VALUES, 512).unwrap(), 2);
+        let counts = minimize_vector(&mut get_fasta_vector(2, FastaNucltudiesIterator::new(&dna_test_path, 512), &ALPHABET_MAP, &ALPHABET_VALUES).unwrap(), 2);
         for (i, c) in [11.0, 2.0, 3.0, 7.0, 6.0, 2.0, 1.0, 1.0, 3.0, 5.0].iter().enumerate() {
             assert_eq!(counts[i], c.clone());
         }

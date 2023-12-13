@@ -5,6 +5,7 @@ use ndarray::stack;
 use ndarray_stats::CorrelationExt;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge};
 use rayon::iter::ParallelIterator;
+use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
 use crate::kmer::create_normalized_profile;
 use crate::samples_file_reader;
 use crate::samples_file_reader::SampleError;
@@ -42,7 +43,7 @@ impl KmerClassifier {
             .into_iter()
             .collect::<Result<Vec<_>,SampleError>>()?
             .par_iter()
-            .map(|sample| (sample.get_name().to_string(), create_normalized_profile(self.kmer_size, sample.get_path(), buffer_size).1.unwrap_or_else(|_| panic!("ERROR: failed to create kmer for {}, quitting", sample.get_path().display()))))
+            .map(|sample| (sample.get_name().to_string(), create_normalized_profile(self.kmer_size, FastaNucltudiesIterator::new(sample.get_path(), buffer_size), &false).1.unwrap_or_else(|_| panic!("ERROR: failed to create kmer for {}, quitting", sample.get_path().display()))))
             .collect();
 
         models.iter_mut()
@@ -87,7 +88,7 @@ impl KmerClassifier {
     }
 
     pub fn predict(&self, file_path: &Path, buffer_size: usize) -> Vec<(&String, f64)> {
-        let genome_kmer = match create_normalized_profile(self.kmer_size, file_path, buffer_size).1 {
+        let genome_kmer = match create_normalized_profile(self.kmer_size, FastaNucltudiesIterator::new(file_path, buffer_size), &false).1 {
             Ok(vector) => vector,
             Err(e) => panic!("E: tried to create k({})-mer for genome {}, but got {:?}, quitting", self.kmer_size, file_path.display(), e),
         };
