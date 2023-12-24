@@ -77,12 +77,13 @@ pub fn predict_using_lz_classifier(log_stream: Option<&mut BufWriter<Box<dyn Wri
 }
 
 pub fn meta_predict_using_lz_classifier(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
-                                    buffer_size: usize,
-                                    classifier: &Classifier,
-                                    fasta: &Path,
-                                    output_file: &Path,
-                                    genes: bool,
-                                    min_genes: usize) -> Result<(), SampleError> {
+                                        buffer_size: usize,
+                                        classifier: &Classifier,
+                                        fasta: &Path,
+                                        output_file: &Path,
+                                        genes: bool,
+                                        min_genes: usize,
+                                        gc_limit: Option<f64>) -> Result<(), SampleError> {
     // Open the output stream
     let mut output_stream = {
         let fout = File::create(output_file).unwrap_or_else(|_| panic!("E: Cannot create output file '{}'", output_file.display()));
@@ -133,7 +134,7 @@ pub fn meta_predict_using_lz_classifier(log_stream: Option<&mut BufWriter<Box<dy
                                     } else {
                                         prev_id.as_slice()
                                     });
-                                    let model_name2score = classifier.predict(temp_fasta_stream, None, &None, false);
+                                    let model_name2score = classifier.predict(temp_fasta_stream, gc_limit, &None, false);
                                     classifier.print_prediction(contig,
                                                                 &mut output_stream, &model_name2score).unwrap_or_else(|_| panic!("E: Failed to write prediction into '{}", output_file.display()));
                                 }
@@ -202,13 +203,41 @@ mod tests {
                                          &PathBuf::from("../data/small_sample_as_meta.fna"),
                                          &output_path,
                                          true,
-                                         0).unwrap();
+                                         0,
+                                         None).unwrap();
         let lines = ["Genome_name\t18\t20\t24\t4\t8\tBest_hit",
             "4_1\t1.98068\t1.97345\t1.98103\t1.96102\t1.99144\t4",
             "4_2\t1.97270\t1.96790\t1.97642\t1.95492\t1.98538\t4",
             "4_3\t1.96976\t1.96571\t1.97475\t1.95316\t1.98320\t4",
             "8_1\t1.95204\t1.97514\t1.97050\t1.96392\t1.93566\t8",
             "8_2\t1.95018\t1.97452\t1.97047\t1.96315\t1.93396\t8",
+            "8_3\t1.95041\t1.97463\t1.96904\t1.96244\t1.93397\t8"];
+        for (cl, kl) in std::fs::read(&output_path).unwrap().lines().zip(lines) {
+            assert_eq!(cl.unwrap(), kl);
+        }
+
+        std::fs::remove_file(&output_path).unwrap();
+    }
+
+    #[test]
+    fn test_meta_genes_gc() {
+        let output_path = PathBuf::from("../tests/meta_small_sample_predication_gc.tsv");
+        // max_depth is 12, for consistency with the small sample.
+        let classifier = create_lz_classifier(None, 12, &PathBuf::from("../tests/small_example_training.txt"), 512, &None);
+        meta_predict_using_lz_classifier(None,
+                                         512,
+                                         &classifier,
+                                         &PathBuf::from("../data/small_sample_as_meta.fna"),
+                                         &output_path,
+                                         true,
+                                         0,
+                                         Some(2.0)).unwrap();
+        let lines = ["Genome_name\t18\t20\t24\t4\t8\tBest_hit",
+            "4_1\tNA\t1.97345\t1.98103\t1.96102\tNA\t4",
+            "4_2\tNA\t1.96790\t1.97642\t1.95492\tNA\t4",
+            "4_3\tNA\t1.96571\t1.97475\t1.95316\t1.98320\t4",
+            "8_1\t1.95204\tNA\tNA\tNA\t1.93566\t8",
+            "8_2\t1.95018\tNA\tNA\tNA\t1.93396\t8",
             "8_3\t1.95041\t1.97463\t1.96904\t1.96244\t1.93397\t8"];
         for (cl, kl) in std::fs::read(&output_path).unwrap().lines().zip(lines) {
             assert_eq!(cl.unwrap(), kl);

@@ -262,12 +262,13 @@ fn compute_task(usage: &Usage) {
                                                       usage.get_buffer_size(),
                                                       &usage.get_kmer_size());
                 if let Err(e) = meta_predict_using_lz_classifier(log_stream.as_mut(),
-                                                            usage.get_buffer_size(),
-                                                            &classifier,
-                                                            prediction_name2file,
-                                                            gz_output_path,
-                                                            usage.get_genes(),
-                                                                   usage.get_min_genes()) {
+                                                                            usage.get_buffer_size(),
+                                                                            &classifier,
+                                                                            prediction_name2file,
+                                                                            gz_output_path,
+                                                                            usage.get_genes(),
+                                                                            usage.get_min_genes(),
+                                                                            usage.get_gc_limit()) {
                     eprintln!("{}", e);
                 }
             }

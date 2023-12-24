@@ -201,6 +201,10 @@ enum Commands {
         #[arg(short = 'd', long = "depth", value_name = "depth", default_value_t = 13)]
         max_depth: usize,
 
+        /// Set %G+C distance between model and test genome limit. To disable, set to 100.
+        #[arg(long = "gc", value_name = "gc", default_value_t = 10.0)]
+        gc_limit: f64,
+
         /// A file with the list of fasta files for the cluster models in the format
         /// <cluster-name>\t<fasta-file>
         #[arg(short = 'i', long = "train", value_name = "training", required = true)]
@@ -333,15 +337,21 @@ struct MetaPrediction {
     out_file: PathBuf,
     genes: bool,
     min_genes: usize,
+    gc_limit: Option<f64>,
 }
 
 impl MetaPrediction {
-    fn new(prediction_name2file_file: &Path, out_file: &Path, genes: bool, min_genes: usize) -> Self {
+    fn new(prediction_name2file_file: &Path, out_file: &Path, genes: bool, min_genes: usize, gc_limit: f64) -> Self {
         Self {
             prediction_name2file_file: prediction_name2file_file.to_path_buf(),
             out_file: out_file.to_path_buf(),
             genes,
             min_genes,
+            gc_limit: if gc_limit == 100.0 {
+                None
+            } else {
+                Some(gc_limit)
+            },
         }
     }
 }
@@ -381,9 +391,9 @@ impl From<Commands> for Task {
                 Task::KMerPredict(FeatureSettings::new(&training_name2file_file, 13, Some(kmer_size)),
                                   PredictionSettings::new(&prediction_name2file_file, &out_file, &None, 100.0, false))
             },
-            Commands::MetaPredict {prediction_name2file_file, out_file, max_depth, training_name2file_file, genes, min_genes} => {
+            Commands::MetaPredict {prediction_name2file_file, out_file, max_depth, training_name2file_file, genes, min_genes, gc_limit} => {
                 Task::MetaPredict(FeatureSettings::new(&training_name2file_file, max_depth, None),
-                                   MetaPrediction::new(&prediction_name2file_file, &out_file, genes, min_genes))
+                                   MetaPrediction::new(&prediction_name2file_file, &out_file, genes, min_genes, gc_limit))
             }
         }
     }
@@ -502,7 +512,7 @@ impl Usage {
             Task::PrintKmer(_) => None,
             Task::BuildKmer(_) => None,
             Task::KMerPredict(_, _) => None,
-            Task::MetaPredict(_, _) => None,
+            Task::MetaPredict(_, s) => s.gc_limit,
         }
     }
     pub fn get_ani_out_file(&self) -> Option<&Path> {

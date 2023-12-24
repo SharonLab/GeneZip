@@ -79,7 +79,8 @@ fn bench_meta_genes(max_depth: usize, buffer_size: usize) {
                                      &PathBuf::from("../data/small_sample_as_meta.fna"),
                                      &output_path,
                                      true,
-                                     0).unwrap();
+                                     0,
+                                     None).unwrap();
     std::fs::remove_file(&output_path).unwrap();
 }
 
