@@ -1,4 +1,4 @@
-//  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
+//  Created by Or Leibovich, Yochai Meir, and Itai Sharon
 
 
 
@@ -18,6 +18,8 @@ use GeneZipLib::print_kmer::print_kmers;
 use GeneZipLib::samples_file_reader::{Sample, SampleError, SampleSource};
 use GeneZipLib::database;
 use GeneZipLib::use_classifier::{create_lz_classifier, meta_predict_using_lz_classifier, predict_using_lz_classifier};
+use GeneZipLib::output_streams::{OutputFileType, OutputStreams};
+use GeneZipLib::logger::log_event;
 
 
 
@@ -38,32 +40,23 @@ fn run_ani<I>(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
                        training_name2file)
 }
 
-fn kmer_prediction(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
+fn kmer_prediction(mut log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
                    buffer_size: usize,
                    kmer_size: usize,
                    prediction_name2file: &Path,
                    output_file: &Path,
                    name2file: &Path) -> Result<(), SampleError> {
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tStarting kmer classifier creation", now.to_rfc2822()).expect("E: Failed to write log");
-    }
+    log_event(&mut log_stream, "Starting kmer classifier creation");
 
     let mut classifier = KmerClassifier::new(kmer_size);
 
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tTraining", now.to_rfc2822()).expect("E: Failed to write log");
-    }
+    log_event(&mut log_stream, "Training");
 
     if let Err(e) = classifier.batch_add_model(name2file, buffer_size) {
         eprintln!("{}", e);
     }
 
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tKmer Prediction is now ready", now.to_rfc2822()).expect("E: Failed to write log");
-    }
+    log_event(&mut log_stream, "Kmer Prediction is now ready");
 
     //////// Prediction
 
@@ -73,10 +66,7 @@ fn kmer_prediction(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
         BufWriter::new(fout)
     };
 
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tPredicting", now.to_rfc2822()).expect("E: Failed to write log");
-    }
+    log_event(&mut log_stream, "Predicting");
 
     classifier.print_header(&mut output_stream).unwrap_or_else(|_| panic!("E: Failed to write header into output file '{}'", output_file.display()));
 
@@ -88,10 +78,7 @@ fn kmer_prediction(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
 
     output_stream.flush().unwrap_or_else(|_| panic!("E: Failed to flush output stream into '{}'", output_file.display()));
 
-    if let Some(&mut ref mut log_stream) = log_stream {
-        let now = Utc::now();
-        writeln!(log_stream, "{}\tGeneZip prediction is ready", now.to_rfc2822()).expect("E: Failed to write log");
-    }
+    log_event(&mut log_stream, "GeneZip prediction is ready");
 
     Ok(())
 }
@@ -147,15 +134,27 @@ fn compute_task(usage: &Usage) {
                     Ok(db) => db,
                     Err(e) => panic!("E: Failed to read GeneZip database from '{}', encountered the following error: '{}'", database_path.display(), e),
                 };
-                let gz_output_path = usage.get_out_file().expect("E: Trying to open the output file, but no path was provided by user. This should never happen.");
+                let base_output = usage.get_out_file().expect("E: Trying to open the output file, but no path was provided by user. This should never happen.");
+                let mut output_streams = {
+                    let mut output_streams_map: std::collections::HashMap<OutputFileType, &Path> = [(OutputFileType::BaseGz, base_output)].into_iter().collect();
+                    if let Some(lz_output_path) = usage.get_gz_values_file() {
+                        output_streams_map.insert(OutputFileType::LzValues, lz_output_path);
+                    }
+                    match OutputStreams::new(&output_streams_map) {
+                        Err(e) => {
+                            panic!("E: failed to create output files, got {}", e);
+                        },
+                        Ok(os) => os,
+                    }
+                };
                 if let Err(e) = predict_using_lz_classifier(log_stream.as_mut(),
-                                            usage.get_buffer_size(),
-                                            database.get_kmer_size(),
-                                            usage.get_gc_limit(),
-                                            database.get_classifier(),
-                                            prediction_name2file,
-                                                            gz_output_path,
-                                            usage.get_reflect()) {
+                                                            usage.get_buffer_size(),
+                                                            database.get_kmer_size(),
+                                                            usage.get_gc_limit(),
+                                                            database.get_classifier(),
+                                                            prediction_name2file,
+                                                            &mut output_streams,
+                                                            usage.get_reflect()) {
                     eprintln!("{}", e);
                 } else if let Some(ani_path) = usage.get_ani_out_file() {
                     let samples_iterator: Box<dyn Iterator<Item=Result<Sample, SampleError>>> = if let Some(training_name2file) = usage.get_training_name2file_file() {
@@ -165,7 +164,7 @@ fn compute_task(usage: &Usage) {
                     };
                     if let Err(e) = run_ani(log_stream.as_mut(),
                                             ani_path,
-                                            gz_output_path,
+                                            base_output,
                                             prediction_name2file,
                                             samples_iterator) {
                         eprintln!("{}", e);
@@ -176,6 +175,18 @@ fn compute_task(usage: &Usage) {
         UserTask::Predict => {
             let md = usage.get_max_depth().expect("E: Trying to use user-provided max depth, however, the user did not provide max depth. This should never happen.");
             let gz_output_path = usage.get_out_file().expect("E: Trying to get the output file, but no path was provided by user. This should never happen.");
+            let mut output_streams = {
+                let mut output_streams_map: std::collections::HashMap<OutputFileType, &Path> = [(OutputFileType::BaseGz, gz_output_path)].into_iter().collect();
+                if let Some(lz_output_path) = usage.get_gz_values_file() {
+                    output_streams_map.insert(OutputFileType::LzValues, lz_output_path);
+                }
+                match OutputStreams::new(&output_streams_map) {
+                    Err(e) => {
+                        panic!("E: failed to create output files, got {}", e);
+                    },
+                    Ok(os) => os,
+                }
+            };
             let prediction_name2file = usage.get_prediction_name2file_file().expect("E: Trying to get prediction input path, however, the user was not asked to provide that. This should never happen.");
             let training_name2file = usage.get_training_name2file_file().expect("E: Trying to read path to training file provided by the user, however, the user did not provide that. This should never happen");
 
@@ -191,7 +202,7 @@ fn compute_task(usage: &Usage) {
                                             usage.get_gc_limit(),
                                             &classifier,
                                             prediction_name2file,
-                                            gz_output_path,
+                                            &mut output_streams,
                                             usage.get_reflect()) {
                     eprintln!("{}", e);
                 }
@@ -253,7 +264,19 @@ fn compute_task(usage: &Usage) {
         UserTask::MetaPredict => {
             let training_name2file = usage.get_training_name2file_file().expect("E: Trying to read path to sequences file provided by the user, however, the user did not provide that. This should never happen");
             let prediction_name2file = usage.get_prediction_name2file_file().expect("E: Trying to get prediction input path, however, the user was not asked to provide that. This should never happen.");
-            let gz_output_path = usage.get_out_file().expect("E: Trying to get the output file, but no path was provided by user. This should never happen.");
+            let mut output_streams = {
+                let gz_output_path = usage.get_out_file().expect("E: Trying to get the output file, but no path was provided by user. This should never happen.");
+                let mut output_streams_map: std::collections::HashMap<OutputFileType, &Path> = [(OutputFileType::BaseGz, gz_output_path)].into_iter().collect();
+                if let Some(lz_output_path) = usage.get_gz_values_file() {
+                    output_streams_map.insert(OutputFileType::LzValues, lz_output_path);
+                }
+                match OutputStreams::new(&output_streams_map) {
+                    Err(e) => {
+                        panic!("E: failed to create output files, got {}", e);
+                    },
+                    Ok(os) => os,
+                }
+            };
             if ! is_file_missing(training_name2file) && ! is_file_missing(prediction_name2file) {
                 let md = usage.get_max_depth().expect("E: Trying to use user-provided max depth, however, the user did not provide max depth. This should never happen.");
                 let classifier = create_lz_classifier(log_stream.as_mut(),
@@ -265,7 +288,7 @@ fn compute_task(usage: &Usage) {
                                                                             usage.get_buffer_size(),
                                                                             &classifier,
                                                                             prediction_name2file,
-                                                                            gz_output_path,
+                                                                            &mut output_streams,
                                                                             usage.get_genes(),
                                                                             usage.get_min_genes(),
                                                                             usage.get_gc_limit()) {

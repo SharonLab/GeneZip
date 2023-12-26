@@ -16,3 +16,5 @@ pub mod fasta_records_iterator;
 pub mod cli;
 pub mod use_classifier;
 mod fasta_record;
+pub mod output_streams;
+pub mod logger;

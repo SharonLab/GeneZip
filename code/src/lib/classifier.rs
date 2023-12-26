@@ -1,4 +1,4 @@
-//  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
+//  Created by Or Leibovich, Yochai Meir, and Itai Sharon
 
 use std::io::{BufWriter, Write};
 use std::path::{Path};
@@ -18,6 +18,7 @@ use crate::lz78::{LenBases, LZ78};
 use crate::reference_sequence::ReferenceSequence;
 use crate::taxonomy::{TaxonomicRank, Taxonomy};
 use serde::{Serialize, Deserialize};
+use crate::output_streams::{OutputFileType, OutputStreams};
 use crate::samples_file_reader::{Sample, SampleError, SampleSource};
 
 #[derive(Serialize, Deserialize)]
@@ -56,11 +57,31 @@ impl Classifier {
         Ok(())
     }
 
-    pub fn print_prediction<W: Write>(&self, name: &str, fout: &mut BufWriter<W>, prediction: &Vec<(&String, Option<f64>)>) -> std::io::Result<()> {
+    pub fn print_prediction(&self, name: &str, out_streams: &mut OutputStreams, prediction: &(Vec<(&String, Option<f64>)>, usize)) -> std::io::Result<()> {
+        for (ost, fout) in out_streams.streams_iter() {
+            match ost {
+                OutputFileType::BaseGz => self.print_prediction_base_gz_file(name, fout, prediction)?,
+                OutputFileType::LzValues => self.print_prediction_lz_matrix(name, fout, &prediction.0)?,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn print_prediction_base_gz_file<W: Write>(&self, name: &str, fout: &mut BufWriter<W>, prediction: &(Vec<(&String, Option<f64>)>, usize)) -> std::io::Result<()> {
+        write!(fout, "{name}\t{}", prediction.1)?;
+
+        match Classifier::get_best_model_name(&prediction.0) {
+            Some(best_model_name) => writeln!(fout, "\t{best_model_name}")?,
+            None => writeln!(fout, "\tNA")?,
+        }
+
+        Ok(())
+    }
+    fn print_prediction_lz_matrix<W: Write>(&self, name: &str, fout: &mut BufWriter<W>, prediction: &Vec<(&String, Option<f64>)>) -> std::io::Result<()> {
         write!(fout, "{name}")?;
 
         let mut model2score = HashMap::new();
-        let best_model_name = Classifier::get_best_model_name(prediction);
 
         for &(model_name, score) in prediction {
             model2score.insert(model_name, score);
@@ -74,11 +95,7 @@ impl Classifier {
             }
         }
 
-        if let Some(best_model_name) = best_model_name {
-            writeln!(fout, "\t{best_model_name}")?;
-        }
-
-        Ok(())
+        writeln!(fout)
     }
 
     pub fn get_best_model_name<'a>(prediction: &Vec<(&'a String, Option<f64>)>) -> Option<&'a String> {
@@ -156,8 +173,12 @@ impl Classifier {
     }
 
 
-    pub fn predict<I>(&self, sequence: I, gc_limit: Option<f64>, kmer_cluster_limit: &Option<usize>, reflect: bool) -> Vec<(&String, Option<f64>)>
+    pub fn predict<I>(&self, sequence: I, gc_limit: Option<f64>, kmer_cluster_limit: &Option<usize>, reflect: bool) -> (Vec<(&String, Option<f64>)>, usize)
     where I: IntoIterator<Item=u8> + Clone + Display + Sync {
+        let sequence_length = match sequence.clone().into_iter().filter(|&nuc| nuc != b'N' ).enumerate().last() {
+            Some((len, _)) => len + 1,
+            None => 0,
+        };
         let models_to_check = match gc_limit {
             None => HashSet::from_iter(self.models_order.iter()),
             Some(gc_limit) => self.filter_models_by_gc(sequence.clone(), gc_limit, &HashSet::from_iter(&self.models_order)),
@@ -174,7 +195,7 @@ impl Classifier {
             Some((model, self_value))
         } else { None };
 
-        models_to_check.iter()
+        (models_to_check.iter()
             .par_bridge()
             .map(|&model_name| {
                 let model = self.models.get(model_name).unwrap();
@@ -187,17 +208,32 @@ impl Classifier {
                 }
 
             } )
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>(), sequence_length)
     }
 
-    pub fn print_header<W: Write>(&self, fout: &mut BufWriter<W>) -> std::io::Result<()> {
+    pub fn print_header(&self, output_streams: &mut OutputStreams) -> std::io::Result<()> {
+        for (oft, fout) in output_streams.streams_iter() {
+            match oft {
+                OutputFileType::BaseGz => self.print_header_base_gz_file(fout)?,
+                OutputFileType::LzValues => self.print_header_lz_matrix(fout)?,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn print_header_base_gz_file<W: Write>(&self, fout: &mut BufWriter<W>) -> std::io::Result<()> {
+        writeln!(fout, "Genome_name\tLength\tBest_hit")?;
+        Ok(())
+    }
+    fn print_header_lz_matrix<W: Write>(&self, fout: &mut BufWriter<W>) -> std::io::Result<()> {
         write!(fout, "Genome_name")?;
 
         for model_name in &self.models_order {
             write!(fout, "\t{model_name}")?;
         }
 
-        writeln!(fout, "\tBest_hit")
+        writeln!(fout)
     }
 
     pub fn print_stats<W: Write>(&self, fout: &mut BufWriter<W>) -> std::io::Result<()> {

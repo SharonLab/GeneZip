@@ -5,6 +5,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use GeneZipLib::fasta_nucleutide_iterator::FastaNucltudiesIterator;
 
 use GeneZipLib::lz78::{LenBases, LZ78};
+use GeneZipLib::output_streams::{OutputFileType, OutputStreams};
 use GeneZipLib::use_classifier::{create_lz_classifier, meta_predict_using_lz_classifier, predict_using_lz_classifier};
 
 fn bench_presentation_example_two_seqs(max_depth: usize) {
@@ -20,7 +21,15 @@ fn bench_presentation_example_two_seqs(max_depth: usize) {
 }
 
 fn bench_small_example(max_depth: usize, buffer_size: usize) {
-    let output_path = PathBuf::from("../tests/small_sample_predication.tsv");
+    let basic_output_path = PathBuf::from("../tests/small_sample_predication_basic.tsv");
+    let lz_matrix_path = PathBuf::from("../tests/small_sample_predication_gz.tsv");
+
+    let mut output_streams = match OutputStreams::new(&[(OutputFileType::BaseGz, basic_output_path.as_path()),
+                                                                     (OutputFileType::LzValues, lz_matrix_path.as_path())].into_iter().collect()) {
+        Err(e) => panic!("ERROR: failed to create output_streams, got {}", e),
+        Ok(os) => os,
+    };
+
     // max_depth is 12, for consistency with the small sample.
     let classifier = create_lz_classifier(None, max_depth, &PathBuf::from("../tests/small_example_training.txt"), buffer_size, &None);
     predict_using_lz_classifier(None,
@@ -29,15 +38,24 @@ fn bench_small_example(max_depth: usize, buffer_size: usize) {
                                 None,
                                 &classifier,
                                 &PathBuf::from("../tests/small_example_testing.txt"),
-                                &output_path,
+                                &mut output_streams,
                                 false).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
+    std::fs::remove_file(&basic_output_path).unwrap();
+    std::fs::remove_file(&lz_matrix_path).unwrap();
 }
 fn bench_taxonomy_example(max_depth: usize, buffer_size: usize) {
     // run with depth 13, buffer_size 512
     let train_path = PathBuf::from("../tests/taxonomy_test_training.txt");
     let test_path = PathBuf::from("../tests/taxonomy_test_testing.txt");
-    let output_path = PathBuf::from("../tests/taxonomy_example_predication.tsv");
+
+    let basic_output_path = PathBuf::from("../tests/taxonomy_example_predication_base.tsv");
+    let lz_matrix_path = PathBuf::from("../tests/taxonomy_example_predication_gz.tsv");
+
+    let mut output_streams = match OutputStreams::new(&[(OutputFileType::BaseGz, basic_output_path.as_path()),
+                                                                     (OutputFileType::LzValues, lz_matrix_path.as_path())].into_iter().collect()) {
+        Err(e) => panic!("ERROR: failed to create output_streams, got {}", e),
+        Ok(os) => os,
+    };
 
     let classifier = create_lz_classifier(None, max_depth, &train_path, buffer_size, &Some(4));
     predict_using_lz_classifier(None,
@@ -46,16 +64,24 @@ fn bench_taxonomy_example(max_depth: usize, buffer_size: usize) {
                                 Some(11.0),
                                 &classifier,
                                 &test_path,
-                                &output_path,
+                                &mut output_streams,
                                 false).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
+    std::fs::remove_file(&basic_output_path).unwrap();
+    std::fs::remove_file(&lz_matrix_path).unwrap();
 }
 
 fn bench_tiny_example(max_depth: usize, buffer_size: usize) {
     // run with depth 12, buffer_size 512
     let train_path = PathBuf::from("../tests/tiny_training.txt");
     let test_path = PathBuf::from("../tests/tiny_testing.txt");
-    let output_path = PathBuf::from("../tests/tiny_sample_predication.tsv");
+
+    let basic_output_path = PathBuf::from("../tests/tiny_sample_predication_basic.tsv");
+    let lz_matrix_path = PathBuf::from("../tests/tiny_sample_predication_gz.tsv");
+    let mut output_streams = match OutputStreams::new(&[(OutputFileType::BaseGz, basic_output_path.as_path()),
+                                                                     (OutputFileType::LzValues, lz_matrix_path.as_path())].into_iter().collect()) {
+        Err(e) => panic!("ERROR: failed to create output_streams, got {}", e),
+        Ok(os) => os,
+    };
 
     let classifier = create_lz_classifier(None, max_depth, &train_path, buffer_size, &None);
     predict_using_lz_classifier(None,
@@ -64,24 +90,33 @@ fn bench_tiny_example(max_depth: usize, buffer_size: usize) {
                                 None,
                                 &classifier,
                                 &test_path,
-                                &output_path,
+                                &mut output_streams,
                                 false).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
+    std::fs::remove_file(&basic_output_path).unwrap();
+    std::fs::remove_file(&lz_matrix_path).unwrap();
 }
 
 fn bench_meta_genes(max_depth: usize, buffer_size: usize) {
-    let output_path = PathBuf::from("../tests/meta_small_sample_predication.tsv");
+    let basic_output_path = PathBuf::from("../tests/meta_small_sample_predication_basic.tsv");
+    let lz_matrix_path = PathBuf::from("../tests/meta_small_sample_predication_gz.tsv");
+    let mut output_streams = match OutputStreams::new(&[(OutputFileType::BaseGz, basic_output_path.as_path()),
+                                                                     (OutputFileType::LzValues, lz_matrix_path.as_path())].into_iter().collect()) {
+        Err(e) => panic!("ERROR: failed to create output_streams, got {}", e),
+        Ok(os) => os,
+    };
+
     // max_depth is 12, for consistency with the small sample.
     let classifier = create_lz_classifier(None, max_depth, &PathBuf::from("../tests/small_example_training.txt"), buffer_size, &None);
     meta_predict_using_lz_classifier(None,
                                      buffer_size,
                                      &classifier,
                                      &PathBuf::from("../data/small_sample_as_meta.fna"),
-                                     &output_path,
+                                     &mut output_streams,
                                      true,
                                      0,
                                      None).unwrap();
-    std::fs::remove_file(&output_path).unwrap();
+    std::fs::remove_file(&basic_output_path).unwrap();
+    std::fs::remove_file(&lz_matrix_path).unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

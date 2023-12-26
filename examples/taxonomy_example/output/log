@@ -1,7 +1,7 @@
-GeneZip, 1.0.1
-Tue, 22 Aug 2023 14:41:38 +0000	Starting
-Tue, 22 Aug 2023 14:41:38 +0000	Starting classifier creation
-Tue, 22 Aug 2023 14:41:38 +0000	Training
+GeneZip, 1.3.0
+Tue, 26 Dec 2023 15:40:14 +0000	Starting
+Tue, 26 Dec 2023 15:40:14 +0000	Starting classifier creation
+Tue, 26 Dec 2023 15:40:14 +0000	Training
 
 Number of models: 3
 some stats for each model:
@@ -32,31 +32,6 @@ Number of leaves:	821845
 
                    0	1	1	100.0
 --------------------------------------------------
-Name:                      Neisseria_flavescens_A_0
-Node array size:           2796203
-Number of inner nodes:     208727
-Max complete depth:        5
-Longest path (root->leaf): 13
-Number of inner node in each depth (% of possible nodes):
-Depth	NNodes	NFull	% of full
-0	1	1	100.0
-1	4	4	100.0
-2	16	16	100.0
-3	64	64	100.0
-4	256	256	100.0
-5	1024	1024	100.0
-6	4092	4096	99.9
-7	15618	16384	95.3
-8	45763	65536	69.8
-9	72849	262144	27.8
-10	51666	1048576	4.9
-11	15327	4194304	0.4
-12	2047	16777216	0.0
-
-Number of leaves:	626182
-
-                   0	1	1	100.0
---------------------------------------------------
 Name:                      Actinomyces_graevenitzii_0
 Node array size:           2796203
 Number of inner nodes:     195115
@@ -81,8 +56,33 @@ Depth	NNodes	NFull	% of full
 Number of leaves:	585346
 
                    0	1	1	100.0
+--------------------------------------------------
+Name:                      Neisseria_flavescens_A_0
+Node array size:           2796203
+Number of inner nodes:     208727
+Max complete depth:        5
+Longest path (root->leaf): 13
+Number of inner node in each depth (% of possible nodes):
+Depth	NNodes	NFull	% of full
+0	1	1	100.0
+1	4	4	100.0
+2	16	16	100.0
+3	64	64	100.0
+4	256	256	100.0
+5	1024	1024	100.0
+6	4092	4096	99.9
+7	15618	16384	95.3
+8	45763	65536	69.8
+9	72849	262144	27.8
+10	51666	1048576	4.9
+11	15327	4194304	0.4
+12	2047	16777216	0.0
 
-Tue, 22 Aug 2023 14:41:39 +0000	GeneZip stats are ready
-Tue, 22 Aug 2023 14:41:39 +0000	Predicting
-Tue, 22 Aug 2023 14:41:42 +0000	GeneZip prediction is ready
-Tue, 22 Aug 2023 14:41:42 +0000	Done
+Number of leaves:	626182
+
+                   0	1	1	100.0
+
+Tue, 26 Dec 2023 15:40:14 +0000	GeneZip stats are ready
+Tue, 26 Dec 2023 15:40:14 +0000	Predicting
+Tue, 26 Dec 2023 15:40:17 +0000	GeneZip prediction is ready
+Tue, 26 Dec 2023 15:40:17 +0000	Done

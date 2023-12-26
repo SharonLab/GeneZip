@@ -1,4 +1,4 @@
-//  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
+//  Created by Or Leibovich, Yochai Meir, and Itai Sharon
 
 use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
@@ -59,6 +59,12 @@ enum Commands {
         #[arg(short = 'o', long = "output", value_name = "output", required = true)]
         out_file: PathBuf,
 
+        /// Path to a file to which the LZ values assigned by the models (columns) to each sequence (rows) will be printed.
+        /// Warning: this file can be huge for large reference datasets (e.g. GTDB) and many genomes/sequences.
+        /// (optional, default: do not create the file)
+        #[arg(long = "lzvalues", value_name = "lzvalues")]
+        gz_values_file: Option<PathBuf>,
+
         /// If given, used as output path file for ANI between sequences and their best-hit.
         /// ANI will be calculated using fastANI.
         /// By default, paths to sequences of representatives will be taken from the database, however, if --train is given, it will override database paths.
@@ -96,6 +102,12 @@ enum Commands {
         /// Where to print the output file
         #[arg(short = 'o', long = "output", value_name = "output", required = true)]
         out_file: PathBuf,
+
+        /// Path to a file to which the LZ values assigned by the models (columns) to each sequence (rows) will be printed.
+        /// Warning: this file can be huge for large reference datasets (e.g. GTDB) and many genomes/sequences.
+        /// (optional, default: do not create the file)
+        #[arg(long = "lzvalues", value_name = "lzvalues")]
+        gz_values_file: Option<PathBuf>,
 
         /// If given, used as output path file for ANI between sequences and their best-hit.
         /// ANI will be calculated using fastANI.
@@ -195,6 +207,12 @@ enum Commands {
         #[arg(short = 'o', long = "output", value_name = "output", required = true)]
         out_file: PathBuf,
 
+        /// Path to a file to which the LZ values assigned by the models (columns) to each sequence (rows) will be printed.
+        /// Warning: this file can be huge for large reference datasets (e.g. GTDB) and many genomes/sequences.
+        /// (optional, default: do not create the file)
+        #[arg(long = "lzvalues", value_name = "lzvalues")]
+        gz_values_file: Option<PathBuf>,
+
         /* --------------------------------- */
 
         /// Maximum depth allowed for the context tree, must be >= 1. Tested up-to 17.
@@ -290,16 +308,18 @@ impl RunSettings {
 struct PredictionSettings {
     prediction_name2file_file: PathBuf,
     out_file: PathBuf,
+    gz_values_file: Option<PathBuf>,
     ani_out_file: Option<PathBuf>,
     gc_limit: Option<f64>,
     reflect: bool,
 }
 
 impl PredictionSettings {
-    fn new(prediction_name2file_file: &Path, out_file: &Path, ani_out_file: &Option<PathBuf>, gc_limit: f64, reflect: bool) -> Self {
+    fn new(prediction_name2file_file: &Path, out_file: &Path, gz_values_file: &Option<PathBuf>, ani_out_file: &Option<PathBuf>, gc_limit: f64, reflect: bool) -> Self {
         PredictionSettings {
             prediction_name2file_file: prediction_name2file_file.to_path_buf(),
             out_file: out_file.to_path_buf(),
+            gz_values_file: gz_values_file.clone(),
             ani_out_file: ani_out_file.clone(),
             gc_limit: if gc_limit == 100.0 {
                 None
@@ -335,16 +355,18 @@ impl PrintKmerSettings {
 struct MetaPrediction {
     prediction_name2file_file: PathBuf,
     out_file: PathBuf,
+    gz_values_file: Option<PathBuf>,
     genes: bool,
     min_genes: usize,
     gc_limit: Option<f64>,
 }
 
 impl MetaPrediction {
-    fn new(prediction_name2file_file: &Path, out_file: &Path, genes: bool, min_genes: usize, gc_limit: f64) -> Self {
+    fn new(prediction_name2file_file: &Path, out_file: &Path, gz_values_file: &Option<PathBuf>, genes: bool, min_genes: usize, gc_limit: f64) -> Self {
         Self {
             prediction_name2file_file: prediction_name2file_file.to_path_buf(),
             out_file: out_file.to_path_buf(),
+            gz_values_file: gz_values_file.clone(),
             genes,
             min_genes,
             gc_limit: if gc_limit == 100.0 {
@@ -372,14 +394,14 @@ impl From<Commands> for Task {
             Commands::Build {training_name2file_file, max_depth, kmer_size, db} => {
                 Task::BuildDB(BuildDBSettings::new(&db, &training_name2file_file, max_depth, kmer_size))
             },
-            Commands::DBPredict {prediction_name2file_file, out_file, ani_out_file, training_name2file_file, gc_limit, db, reflect} => {
+            Commands::DBPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, training_name2file_file, gc_limit, db, reflect} => {
                 Task::DBPredict(db,
                                 training_name2file_file,
-                                PredictionSettings::new(&prediction_name2file_file, &out_file, &ani_out_file, gc_limit, reflect))
+                                PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect))
             },
-            Commands::TrainPredict {prediction_name2file_file, out_file, ani_out_file, max_depth, gc_limit, kmer_size, training_name2file_file, reflect} => {
+            Commands::TrainPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, max_depth, gc_limit, kmer_size, training_name2file_file, reflect} => {
                 Task::Predict(FeatureSettings::new(&training_name2file_file, max_depth, Some(kmer_size)),
-                              PredictionSettings::new(&prediction_name2file_file, &out_file, &ani_out_file, gc_limit, reflect))
+                              PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect))
             },
             Commands::PrintKmer {input, output, k, ratio, meta} => {
                 Task::PrintKmer(PrintKmerSettings::new(&input, &output, k, ratio, meta))
@@ -389,11 +411,11 @@ impl From<Commands> for Task {
             },
             Commands::KMerPredict {training_name2file_file, prediction_name2file_file, out_file, kmer_size} => {
                 Task::KMerPredict(FeatureSettings::new(&training_name2file_file, 13, Some(kmer_size)),
-                                  PredictionSettings::new(&prediction_name2file_file, &out_file, &None, 100.0, false))
+                                  PredictionSettings::new(&prediction_name2file_file, &out_file, &None, &None, 100.0, false))
             },
-            Commands::MetaPredict {prediction_name2file_file, out_file, max_depth, training_name2file_file, genes, min_genes, gc_limit} => {
+            Commands::MetaPredict {prediction_name2file_file, out_file, gz_values_file, max_depth, training_name2file_file, genes, min_genes, gc_limit} => {
                 Task::MetaPredict(FeatureSettings::new(&training_name2file_file, max_depth, None),
-                                   MetaPrediction::new(&prediction_name2file_file, &out_file, genes, min_genes, gc_limit))
+                                   MetaPrediction::new(&prediction_name2file_file, &out_file, &gz_values_file, genes, min_genes, gc_limit))
             }
         }
     }
@@ -487,6 +509,18 @@ impl Usage {
             Task::BuildKmer(_) => None,
             Task::KMerPredict(_, s) => Some(&s.out_file),
             Task::MetaPredict(_, s) => Some(&s.out_file),
+        }
+    }
+
+    pub fn get_gz_values_file(&self) -> Option<&Path> {
+        match &self.task {
+            Task::BuildDB(_) => None,
+            Task::DBPredict(_, _, s) => s.gz_values_file.as_deref(),
+            Task::Predict(_, s) => s.gz_values_file.as_deref(),
+            Task::PrintKmer(_) => None,
+            Task::BuildKmer(_) => None,
+            Task::KMerPredict(_, s) => s.gz_values_file.as_deref(),
+            Task::MetaPredict(_, s) => s.gz_values_file.as_deref(),
         }
     }
     pub fn get_max_depth(&self) -> Option<usize> {
