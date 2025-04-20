@@ -1,14 +1,17 @@
 //  Created by Or Leibovich, Yochai Meir, and Itai Sharon, last updated on 2023/08/31
 
+use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter};
 use std::fs::File;
+use std::hash::Hasher;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use crate::reference_sequence::ReferenceSequence;
 use crate::taxonomy::Taxonomy;
 
 #[derive(Debug)]
-enum SampleErrorType {
+#[allow(dead_code)] // IoError(std::io::Error) will raise a warning, as the error data isn't yet used
+pub enum SampleErrorType {
     IoError(std::io::Error),
     None,
 }
@@ -21,7 +24,7 @@ pub struct SampleError {
 }
 
 impl SampleError {
-    fn new(context: &str, error: SampleErrorType) -> Self {
+    pub fn new(context: &str, error: SampleErrorType) -> Self {
         SampleError {
             context: context.to_string(),
             error,
@@ -35,33 +38,70 @@ impl Display for SampleError {
     }
 }
 
+#[derive(Clone)]
 pub struct Sample {
     name: String,
     path: PathBuf,
     taxonomy: Option<Taxonomy>,
+    line_number: usize,
 }
 
 impl Sample {
-    pub fn new(name: &str, path: &str, taxonomy: Option<&str>) -> Self {
+    pub fn new(name: &str, path: &str, taxonomy: Option<&str>, line_number: usize) -> Self {
         Sample {
             name: name.to_string(),
             path: PathBuf::from(path),
             taxonomy: taxonomy.map(Taxonomy::from),
+            line_number,
         }
     }
 
     pub fn get_name(&self) -> &str { &self.name }
     pub fn get_path(&self) -> &Path { &self.path }
     pub fn get_taxonomy(&self) -> &Option<Taxonomy> { &self.taxonomy }
+    pub fn get_line_number(&self) -> usize { self.line_number }
 }
 
+impl Debug for Sample {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Sample({}, {}, {:?}, {})", self.get_name(), self.get_path().display(), self.get_taxonomy(), self.get_line_number())
+    }
+}
 impl From<&ReferenceSequence> for Sample {
     fn from(value: &ReferenceSequence) -> Self {
         Self {
             name: value.get_name().to_string(),
             path: value.get_fasta_path().to_path_buf(),
             taxonomy: value.get_kmer_cluster().cloned(),
+            line_number: 0,
         }
+    }
+}
+
+impl Ord for Sample {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.get_path().cmp(other.get_path())
+    }
+}
+
+impl PartialOrd for Sample {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Sample {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_path().eq(other.get_path())
+    }
+}
+impl Eq for Sample {
+
+}
+
+impl std::hash::Hash for Sample {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.get_path().hash(state)
     }
 }
 
@@ -98,6 +138,11 @@ pub struct SampleIterator {
     line_number: usize,
 }
 
+impl From<SampleSource> for SampleIterator {
+    fn from(value: SampleSource) -> Self {
+        SampleIterator::from(&value)
+    }
+}
 impl From<&SampleSource> for SampleIterator {
     fn from(value: &SampleSource) -> Self {
         SampleIterator {
@@ -112,10 +157,8 @@ impl From<&SampleSource> for SampleIterator {
     }
 }
 
-impl Iterator for SampleIterator {
-    type Item = Result<Sample, SampleError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl SampleIterator {
+    fn next(&mut self) -> Option<Result<Sample, SampleError>> {
         let mut line = String::new();
         match self.reader.read_line(&mut line) {
             Err(e) => Some(Err(SampleError::new(&format!("E: Trying to parse samples from '{}' led to '{}'", self.source.display(), e), SampleErrorType::IoError(e)))),
@@ -139,8 +182,29 @@ impl Iterator for SampleIterator {
                     None
                 };
                 self.line_number += 1;
-                Some(Ok(Sample::new(name, file_path, taxonomy)))
+                Some(Ok(Sample::new(name, file_path, taxonomy, self.line_number - 1)))
             }
         }
     }
 }
+
+impl Iterator for SampleIterator {
+    type Item = Result<Sample, SampleError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next()
+    }
+}
+
+
+// impl rayon::iter::ParallelIterator for SampleIterator {
+//     type Item = Result<Sample, SampleError>;
+//
+//     fn drive_unindexed<C>(mut self, consumer: C) -> C::Result
+//     where
+//         C: UnindexedConsumer<Self::Item>,
+//         C::Result: Result<Sample, SampleError>
+//     {
+//         self.next().unwrap()
+//     }
+// }

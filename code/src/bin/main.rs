@@ -5,13 +5,14 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
-
+use std::sync::Arc;
 use chrono::Utc;
+use GeneZipLib::ani_calculator_tool::AniCalculatorTool;
 
 extern crate GeneZipLib;
 
 use GeneZipLib::cli::{Usage, UserTask};
-use GeneZipLib::ani_rating::create_fastani_run;
+use GeneZipLib::ani_rating::create_ani_run;
 use GeneZipLib::kmer_database::KmerDatabase;
 use GeneZipLib::kmer_prediction::KmerClassifier;
 use GeneZipLib::print_kmer::print_kmers;
@@ -23,21 +24,23 @@ use GeneZipLib::logger::log_event;
 
 
 
-fn run_ani<I>(log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
-           ani_path: &Path,
-           gz_output_file: &Path,
-           prediction_name2file: &Path,
-           training_name2file: I) -> Result<(), SampleError> where
+fn run_ani<I>(log_stream: Option<&mut BufWriter<Box<dyn Write>>>, 
+              ani_path: &Path,
+              gz_output_file: &Path,
+              prediction_name2file: &Path,
+              training_name2file: I,
+              ani_calculator_tool: AniCalculatorTool) -> Result<(), SampleError> where
     I: IntoIterator<Item=Result<Sample, SampleError>> {
     if let Some(log_stream) = log_stream {
         let now = Utc::now();
-        writeln!(log_stream, "{}\tStarting fastANI step", now.to_rfc2822()).expect("E: Failed to write log");
+        writeln!(log_stream, "{}\tStarting ANI step", now.to_rfc2822()).expect("E: Failed to write log");
     }
 
-    create_fastani_run(gz_output_file,
-                       ani_path,
-                       prediction_name2file,
-                       training_name2file)
+    create_ani_run(gz_output_file,
+                   ani_path,
+                   prediction_name2file,
+                   training_name2file,
+                   ani_calculator_tool)
 }
 
 fn kmer_prediction(mut log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
@@ -151,7 +154,7 @@ fn compute_task(usage: &Usage) {
                                                             usage.get_buffer_size(),
                                                             database.get_kmer_size(),
                                                             usage.get_gc_limit(),
-                                                            database.get_classifier(),
+                                                            database.arc_classifier(),
                                                             prediction_name2file,
                                                             &mut output_streams,
                                                             usage.get_reflect()) {
@@ -166,7 +169,8 @@ fn compute_task(usage: &Usage) {
                                             ani_path,
                                             base_output,
                                             prediction_name2file,
-                                            samples_iterator) {
+                                            samples_iterator,
+                                            usage.get_ani_calculator_tool()) {
                         eprintln!("{}", e);
                     }
                 }
@@ -191,16 +195,16 @@ fn compute_task(usage: &Usage) {
             let training_name2file = usage.get_training_name2file_file().expect("E: Trying to read path to training file provided by the user, however, the user did not provide that. This should never happen");
 
             if ! is_file_missing(prediction_name2file) && ! is_file_missing(training_name2file) {
-                let classifier = create_lz_classifier(log_stream.as_mut(),
+                let classifier = Arc::new(create_lz_classifier(log_stream.as_mut(),
                                                       md,
                                                       training_name2file,
                                                       usage.get_buffer_size(),
-                                                      &usage.get_kmer_size());
+                                                      &usage.get_kmer_size()));
                 if let Err(e) = predict_using_lz_classifier(log_stream.as_mut(),
                                             usage.get_buffer_size(),
                                             &usage.get_kmer_size(),
                                             usage.get_gc_limit(),
-                                            &classifier,
+                                            classifier,
                                             prediction_name2file,
                                             &mut output_streams,
                                             usage.get_reflect()) {
@@ -208,10 +212,11 @@ fn compute_task(usage: &Usage) {
                 }
                 if let Some(ani_path) = usage.get_ani_out_file() {
                     if let Err(e) = run_ani(log_stream.as_mut(),
-                            ani_path,
-                            gz_output_path,
-                            prediction_name2file,
-                            SampleSource::new(training_name2file, false)) {
+                                            ani_path,
+                                            gz_output_path,
+                                            prediction_name2file,
+                                            SampleSource::new(training_name2file, false),
+                                            usage.get_ani_calculator_tool()) {
                         eprintln!("{}", e);
                     }
                 }
@@ -311,7 +316,9 @@ fn main() {
     }
     let usage = Usage::new();
     if let Some(jobs) = usage.get_jobs() {
-        rayon::ThreadPoolBuilder::new().num_threads(jobs).build_global().unwrap();
+        if jobs > 0 {
+            rayon::ThreadPoolBuilder::new().num_threads(jobs).build_global().unwrap();
+        }
     }
 
     compute_task(&usage)

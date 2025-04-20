@@ -247,7 +247,7 @@ impl Classifier {
         writeln!(fout)
     }
 
-    fn iter_references<'a>(&'a self) -> Box<dyn Iterator<Item=& ReferenceSequence> + 'a> {
+    fn iter_references<'a>(&'a self) -> Box<dyn Iterator<Item=&'a ReferenceSequence> + 'a> {
         Box::new(self.models.values())
     }
 }

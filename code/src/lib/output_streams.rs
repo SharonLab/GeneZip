@@ -1,5 +1,6 @@
 use std::collections::hash_map::IterMut;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -15,12 +16,13 @@ pub enum OutputFileType {
     LzValues,
 }
 
-impl ToString for OutputFileType {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for OutputFileType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self {
             OutputFileType::BaseGz => String::from("Base GZ"),
             OutputFileType::LzValues => String::from("LZ Values"),
-        }
+        };
+        write!(f, "{}", str)
     }
 }
 
@@ -75,7 +77,7 @@ impl std::fmt::Display for OutputStreams {
             } else {
                 write!(f, ", ")?;
             }
-            write!(f, "{}: {}", oft.to_string(), self.paths.get(&oft).map_or("None".to_string(), |p| p.display().to_string()) )?;
+            write!(f, "{}: {}", oft, self.paths.get(&oft).map_or("None".to_string(), |p| p.display().to_string()) )?;
         }
 
         Ok(())

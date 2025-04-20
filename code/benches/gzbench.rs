@@ -1,5 +1,6 @@
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use GeneZipLib::fasta_nucleutide_iterator::FastaNucltudiesIterator;
@@ -31,12 +32,12 @@ fn bench_small_example(max_depth: usize, buffer_size: usize) {
     };
 
     // max_depth is 12, for consistency with the small sample.
-    let classifier = create_lz_classifier(None, max_depth, &PathBuf::from("../tests/small_example_training.txt"), buffer_size, &None);
+    let classifier = Arc::new(create_lz_classifier(None, max_depth, &PathBuf::from("../tests/small_example_training.txt"), buffer_size, &None));
     predict_using_lz_classifier(None,
                                 buffer_size,
                                 &None,
                                 None,
-                                &classifier,
+                                classifier,
                                 &PathBuf::from("../tests/small_example_testing.txt"),
                                 &mut output_streams,
                                 false).unwrap();
@@ -57,12 +58,12 @@ fn bench_taxonomy_example(max_depth: usize, buffer_size: usize) {
         Ok(os) => os,
     };
 
-    let classifier = create_lz_classifier(None, max_depth, &train_path, buffer_size, &Some(4));
+    let classifier = Arc::new(create_lz_classifier(None, max_depth, &train_path, buffer_size, &Some(4)));
     predict_using_lz_classifier(None,
                                 buffer_size,
                                 &Some(4),
                                 Some(11.0),
-                                &classifier,
+                                classifier,
                                 &test_path,
                                 &mut output_streams,
                                 false).unwrap();
@@ -83,12 +84,12 @@ fn bench_tiny_example(max_depth: usize, buffer_size: usize) {
         Ok(os) => os,
     };
 
-    let classifier = create_lz_classifier(None, max_depth, &train_path, buffer_size, &None);
+    let classifier = Arc::new(create_lz_classifier(None, max_depth, &train_path, buffer_size, &None));
     predict_using_lz_classifier(None,
                                 buffer_size,
                                 &None,
                                 None,
-                                &classifier,
+                                classifier,
                                 &test_path,
                                 &mut output_streams,
                                 false).unwrap();

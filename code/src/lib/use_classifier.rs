@@ -1,14 +1,16 @@
 use std::io::{BufWriter, Write};
 use std::path::Path;
-
+use std::sync::{Arc, Mutex};
+use rayon::prelude::*;
 use crate::classifier::Classifier;
 use crate::lz78::LenBases;
 use crate::{fasta_records_iterator, samples_file_reader};
+use crate::cached_fasta_nucleutide_iterator::CachedFastaNucltudiesIterator;
 use crate::contig_naming::{are_genes_of_same_contig, get_contig_name, sequence_id2str};
 use crate::fasta_nucleutide_iterator::FastaNucltudiesIterator;
 use crate::fasta_record::FastaRecord;
 use crate::output_streams::OutputStreams;
-use crate::samples_file_reader::SampleError;
+use crate::samples_file_reader::{Sample, SampleError, SampleIterator};
 use crate::logger::log_event;
 
 pub fn create_lz_classifier(mut log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
@@ -42,11 +44,82 @@ fn write_classifier_prediction(classifier: &Classifier, sample_name: &str,
         .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData,
                                          format!("ERROR: Failed to write prediction into {}", output_streams)))
 }
+
+struct SamplePrediction {
+    sample: Sample,
+    prediction: (Vec<(String, Option<f64>)>, usize),
+}
+
+type PredictorFunction = Arc<dyn Send + Sync + Fn(&Sample) -> (Vec<(String, Option<f64>)>, usize)>;
+impl From<(Arc<Mutex<Sample>>, &PredictorFunction)> for SamplePrediction {
+    fn from(value: (Arc<Mutex<Sample>>, &PredictorFunction)) -> Self {
+        let sample = Arc::try_unwrap(value.0).unwrap().into_inner().unwrap();
+        let prediction = value.1(&sample);
+        Self {
+            sample: sample,
+            prediction,
+        }
+    }
+}
+enum SampleResults {
+    Err(SampleError),
+    Ok(SamplePrediction)
+}
+
+impl From<(Result<Arc<Mutex<Sample>>, SampleError>, &PredictorFunction)> for SampleResults {
+    fn from(value: (Result<Arc<Mutex<Sample>>, SampleError>, &PredictorFunction)) -> Self {
+        match value.0 {
+            Err(e) => SampleResults::Err(e),
+            Ok(sample) => SampleResults::Ok(SamplePrediction::from((sample, value.1)))
+        }
+    }
+}
+
+fn owned_prediction_results(refed: (Vec<(&String, Option<f64>)>, usize)) -> (Vec<(String, Option<f64>)>, usize) {
+    let num = refed.1;
+    let vec = refed.0.iter().map(|(s, o)| (s.to_string(), o.clone()) )
+        .collect::<Vec<(String, Option<f64>)>>();
+
+    (vec, num)
+}
+
+fn refed_prediction_results(owned: &(Vec<(String, Option<f64>)>, usize)) -> (Vec<(&String, Option<f64>)>, usize) {
+    let num = owned.1;
+    let vec = owned.0.iter().map(|(s, o)| (s, o.clone()) )
+        .collect::<Vec<(&String, Option<f64>)>>();
+
+    (vec, num)
+}
+
+struct ReadyPredictor {
+    classifier: Arc<Classifier>,
+    kmer_size: Option<usize>,
+    gc_limit: Option<f64>,
+    reflect: bool,
+    buffer_size: usize,
+}
+
+impl ReadyPredictor {
+    fn new(classifier: Arc<Classifier>, kmer_size: Option<usize>, gc_limit: Option<f64>, reflect: bool, buffer_size: usize,) -> Self {
+        Self {
+            classifier,
+            kmer_size,
+            gc_limit,
+            reflect,
+            buffer_size,
+        }
+    }
+
+    fn predict(&self, sample: &Sample) -> (Vec<(String, Option<f64>)>, usize) {
+        owned_prediction_results(self.classifier.predict(CachedFastaNucltudiesIterator::from(FastaNucltudiesIterator::new(sample.get_path(), self.buffer_size)), self.gc_limit, &self.kmer_size, self.reflect))
+    }
+}
+
 pub fn predict_using_lz_classifier(mut log_stream: Option<&mut BufWriter<Box<dyn Write>>>,
                                buffer_size: usize,
                                kmer_size: &Option<usize>,
                                gc_limit: Option<f64>,
-                               classifier: &Classifier,
+                               classifier: Arc<Classifier>,
                                prediction_name2file: &Path,
                                output_streams: &mut OutputStreams,
                                reflect: bool) -> Result<(), SampleError> {
@@ -54,13 +127,52 @@ pub fn predict_using_lz_classifier(mut log_stream: Option<&mut BufWriter<Box<dyn
     log_event(&mut log_stream, "Predicting");
 
     classifier.print_header(output_streams).unwrap_or_else(|_| panic!("E: Failed to write header into output file '{}'", output_streams));
-    for sample in samples_file_reader::SampleSource::new(prediction_name2file, false).into_iter() {
-        let sample = sample?;
-        let model_name2score = classifier.predict(FastaNucltudiesIterator::new(sample.get_path(), buffer_size), gc_limit, kmer_size, reflect);
-        if let Err(e) = write_classifier_prediction(classifier, sample.get_name(), output_streams, &model_name2score) {
+    let mut results = {
+        let ready_predictor = ReadyPredictor::new(classifier.clone(), kmer_size.clone(), gc_limit, reflect, buffer_size);
+        let prediction_function: PredictorFunction = Arc::new(move |s| ready_predictor.predict(s));
+        // let get_sample_results = |s| SampleResults::from((s, &prediction_function));
+        let get_sample_prediction = Arc::new(|s| SamplePrediction::from((s, &prediction_function)));
+        let samples = SampleIterator::from(samples_file_reader::SampleSource::new(prediction_name2file, false))
+            .map(|s| match s {
+                Err(se) => Err(se),
+                Ok(sample) => Ok(Arc::new(Mutex::new(sample))),
+            })
+            .collect::<Result<Vec<Arc<Mutex<Sample>>>, SampleError>>()?;
+
+
+        // samples.into_par_iter()
+        samples.into_par_iter()
+            .map(|s| get_sample_prediction(s))
+            .collect::<Vec<SamplePrediction>>()
+
+        // SampleIterator::from(samples_file_reader::SampleSource::new(prediction_name2file, false))
+        //     .into_iter()
+        //     .map(get_sample_results)
+        //     .map(|sr| match sr {
+        //         SampleResults::Err(se) => Result::Err(se),
+        //         SampleResults::Ok(sp) => Ok(sp),
+        //     })
+        //     .collect::<Result<Vec<SamplePrediction>, SampleError>>()
+    };
+
+
+
+    results.par_sort_by_key(|i| i.sample.get_line_number());
+
+    for sp in results {
+        if let Err(e) = write_classifier_prediction(&classifier, sp.sample.get_name(), output_streams, &refed_prediction_results(&sp.prediction)) {
             panic!("{}", e);
         }
     }
+
+    //
+    // for sample in samples_file_reader::SampleSource::new(prediction_name2file, false).into_iter() {
+    //     let sample = sample?;
+    //     let model_name2score = classifier.predict(FastaNucltudiesIterator::new(sample.get_path(), buffer_size), gc_limit, kmer_size, reflect);
+    //     if let Err(e) = write_classifier_prediction(classifier, sample.get_name(), output_streams, &model_name2score) {
+    //         panic!("{}", e);
+    //     }
+    // }
 
     output_streams.flush().unwrap_or_else(|_| panic!("E: Failed to flush output stream into '{}'", output_streams));
 
@@ -171,6 +283,7 @@ pub fn meta_predict_using_lz_classifier(mut log_stream: Option<&mut BufWriter<Bo
 mod tests {
     use std::io::BufRead;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use crate::output_streams::{OutputFileType, OutputStreams};
     use crate::use_classifier::{create_lz_classifier, meta_predict_using_lz_classifier, predict_using_lz_classifier};
 
@@ -317,12 +430,12 @@ mod tests {
         };
 
         // max_depth is 12, for consistency with the small sample.
-        let classifier = create_lz_classifier(None, 12, &PathBuf::from("../tests/small_example_training.txt"), 512, &None);
+        let classifier = Arc::new(create_lz_classifier(None, 12, &PathBuf::from("../tests/small_example_training.txt"), 512, &None));
         predict_using_lz_classifier(None,
                                     512,
                                     &None,
                                     None,
-                                    &classifier,
+                                    classifier,
                                     &PathBuf::from("../tests/small_example_testing.txt"),
                                     &mut output_streams,
                                     false).unwrap();

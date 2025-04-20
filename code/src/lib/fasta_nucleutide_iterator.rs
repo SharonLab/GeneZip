@@ -100,6 +100,8 @@ impl FastaNucltudiesIterator {
         }
         results
     }
+    
+    pub fn get_path(&self) -> &Path { self.path.as_path() }
 }
 
 impl Iterator for FastaNucltudiesIterator {

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 
+if ! command -v cmake &> /dev/null; then
+  echo "Please install cmake and run again"
+  exit
+fi
+
 if ! command -v cargo &> /dev/null; then
+    echo "Installing cargo"
     script_path=$( mktemp )
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > "${script_path}"
     sh "${script_path}" -qy

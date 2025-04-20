@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
-
+use crate::ani_calculator_tool::AniCalculatorTool;
 /*
 TODO: edit the help strings
 */
@@ -66,10 +66,13 @@ enum Commands {
         gz_values_file: Option<PathBuf>,
 
         /// If given, used as output path file for ANI between sequences and their best-hit.
-        /// ANI will be calculated using fastANI.
         /// By default, paths to sequences of representatives will be taken from the database, however, if --train is given, it will override database paths.
         #[arg(long = "ani", value_name = "ani")]
         ani_out_file: Option<PathBuf>,
+
+        /// Choose ANI calculation tool
+        #[arg(long = "anitool", value_name = "anitool")]
+        anitool: Option<AniCalculatorTool>,
 
         /* --------------------------------- */
 
@@ -110,9 +113,12 @@ enum Commands {
         gz_values_file: Option<PathBuf>,
 
         /// If given, used as output path file for ANI between sequences and their best-hit.
-        /// ANI will be calculated using fastANI.
         #[arg(long = "ani", value_name = "ani")]
         ani_out_file: Option<PathBuf>,
+
+        /// Choose ANI calculation tool
+        #[arg(long = "anitool", value_name = "anitool")]
+        anitool: Option<AniCalculatorTool>,
 
         /* --------------------------------- */
 
@@ -291,16 +297,16 @@ struct RunSettings {
     version: &'static str,
     jobs: Option<usize>,
     buffer_size: usize,
-    print_statistics: bool,
+    print_statistics: bool
 }
 
 impl RunSettings {
     fn new(version: &'static str, jobs: usize, buffer_size: usize, print_statistics: bool) -> Self {
         RunSettings {
             version,
-            jobs: if jobs < 2 { None } else { Some(jobs) },
+            jobs: if jobs == 0 { None } else { Some(jobs) },
             buffer_size,
-            print_statistics
+            print_statistics,
         }
     }
 }
@@ -312,10 +318,11 @@ struct PredictionSettings {
     ani_out_file: Option<PathBuf>,
     gc_limit: Option<f64>,
     reflect: bool,
+    ani_calculator_tool: AniCalculatorTool,
 }
 
 impl PredictionSettings {
-    fn new(prediction_name2file_file: &Path, out_file: &Path, gz_values_file: &Option<PathBuf>, ani_out_file: &Option<PathBuf>, gc_limit: f64, reflect: bool) -> Self {
+    fn new(prediction_name2file_file: &Path, out_file: &Path, gz_values_file: &Option<PathBuf>, ani_out_file: &Option<PathBuf>, gc_limit: f64, reflect: bool, ani_calculator_tool: Option<AniCalculatorTool>) -> Self {
         PredictionSettings {
             prediction_name2file_file: prediction_name2file_file.to_path_buf(),
             out_file: out_file.to_path_buf(),
@@ -326,7 +333,8 @@ impl PredictionSettings {
             } else {
                 Some(gc_limit)
             },
-            reflect
+            reflect,
+            ani_calculator_tool: ani_calculator_tool.unwrap_or_default(),
         }
     }
 }
@@ -394,14 +402,14 @@ impl From<Commands> for Task {
             Commands::Build {training_name2file_file, max_depth, kmer_size, db} => {
                 Task::BuildDB(BuildDBSettings::new(&db, &training_name2file_file, max_depth, kmer_size))
             },
-            Commands::DBPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, training_name2file_file, gc_limit, db, reflect} => {
+            Commands::DBPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, anitool, training_name2file_file, gc_limit, db, reflect} => {
                 Task::DBPredict(db,
                                 training_name2file_file,
-                                PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect))
+                                PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect, anitool))
             },
-            Commands::TrainPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, max_depth, gc_limit, kmer_size, training_name2file_file, reflect} => {
+            Commands::TrainPredict {prediction_name2file_file, out_file, gz_values_file, ani_out_file, anitool, max_depth, gc_limit, kmer_size, training_name2file_file, reflect} => {
                 Task::Predict(FeatureSettings::new(&training_name2file_file, max_depth, Some(kmer_size)),
-                              PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect))
+                              PredictionSettings::new(&prediction_name2file_file, &out_file, &gz_values_file, &ani_out_file, gc_limit, reflect, anitool))
             },
             Commands::PrintKmer {input, output, k, ratio, meta} => {
                 Task::PrintKmer(PrintKmerSettings::new(&input, &output, k, ratio, meta))
@@ -411,7 +419,7 @@ impl From<Commands> for Task {
             },
             Commands::KMerPredict {training_name2file_file, prediction_name2file_file, out_file, kmer_size} => {
                 Task::KMerPredict(FeatureSettings::new(&training_name2file_file, 13, Some(kmer_size)),
-                                  PredictionSettings::new(&prediction_name2file_file, &out_file, &None, &None, 100.0, false))
+                                  PredictionSettings::new(&prediction_name2file_file, &out_file, &None, &None, 100.0, false, None))
             },
             Commands::MetaPredict {prediction_name2file_file, out_file, gz_values_file, max_depth, training_name2file_file, genes, min_genes, gc_limit} => {
                 Task::MetaPredict(FeatureSettings::new(&training_name2file_file, max_depth, None),
@@ -533,6 +541,18 @@ impl Usage {
                 Task::KMerPredict(_, _) => None,
                 Task::MetaPredict(s, _) => Some(s.max_depth),
             }
+    }
+    
+    pub fn get_ani_calculator_tool(&self) -> AniCalculatorTool {
+        match &self.task {
+            Task::BuildDB(_) => None,
+            Task::DBPredict(_, _, s) => Some(s.ani_calculator_tool),
+            Task::Predict(_, s) => Some(s.ani_calculator_tool),
+            Task::PrintKmer(_) => None,
+            Task::BuildKmer(_) => None,
+            Task::KMerPredict(_, _) => None,
+            Task::MetaPredict(_, _) => None
+        }.unwrap_or_default()
     }
     pub fn get_version(&self) -> &str { self.run_settings.version }
     pub fn get_jobs(&self) -> Option<usize> { self.run_settings.jobs }
